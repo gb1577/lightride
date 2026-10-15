@@ -317,7 +317,7 @@ const LEVELS = [
   { lv: 5, name: 'THE SPHERE', bar: 126, track: 'LIGHTRIDE',  tc: '#5ad8ff', blurb: 'Reach the sphere, enter the light' },
   { lv: 6, name: 'DISC ARRAY', bar: 152, track: 'PERPETUAL MACHINES', tc: '#ff5a8a', blurb: 'Top-down: turning HUD discs, sweeping arms', td: true },
   { lv: 7, name: 'CORE STACKS', bar: 184, track: 'PERPETUAL MACHINES', tc: '#7fd8ff', blurb: 'Top-down: core towers, light bursts', td: true },
-  { lv: 8, name: 'GLASS SPIRES', bar: 216, track: 'IN THIS CITY', tc: '#ff9a3d', blurb: 'Mirror plain, lasers, light spires' },
+  { lv: 8, name: 'DIGI-PLANES', bar: 216, track: 'IN THIS CITY', tc: '#ff9a3d', blurb: 'Mirror plain, lasers, light spires' },
 ];
 const L2 = 32, L3 = 70, L4 = 98, L5 = 126, LEND = 150;   // level start bars; LEND = the sphere's hole
 const L6 = 152, L7 = 184, L8 = 216, LFIN = 248;          // after the sphere: warp 150-152, two top-down levels, the mirror plain; LFIN = last beat
@@ -345,7 +345,7 @@ const SECTIONS = [ // bars [from,to); gate = beats between rings
   { from: 184, to: 192, lv: 7, name: 'CORE STACKS',  pal: 'cores',  speed: 52, gate: 4, burst: .3, wall: .2, sweep: .15 },
   { from: 192, to: 204, lv: 7, name: 'CORE ARRAY',   pal: 'cores',  speed: 57, gate: 2, burst: .45, wall: .3, sweep: .25, moving: .3 },
   { from: 204, to: 216, lv: 7, name: 'CORE MELTDOWN', pal: 'cores', speed: 61, gate: 2, burst: .6, wall: .4, sweep: .35, double: .3, moving: .45, tight: 2.4 },
-  { from: 216, to: 224, lv: 8, name: 'GLASS SPIRES', pal: 'prism',  speed: 56, gate: 4, shards: .8, lasers: .3, win: .3 },
+  { from: 216, to: 224, lv: 8, name: 'DIGI-PLANES',  pal: 'prism',  speed: 56, gate: 4, shards: .8, lasers: .3, win: .3 },
   { from: 224, to: 236, lv: 8, name: 'MIRROR PLAIN', pal: 'prism',  speed: 64, gate: 2, shards: 1.2, lasers: .4, win: .5, moving: .5, portal: .15, bar: .4 },
   { from: 236, to: 248, lv: 8, name: 'PRISM STORM',  pal: 'prism',  speed: 70, gate: 2, shards: 1.5, lasers: .45, win: .6, moving: .7, tight: 2.2, portal: .2, bar: .6 },
   { from: 248, to: 999, lv: 8, name: 'HORIZON',      pal: 'prism',  speed: 50, gate: 0 },
@@ -1770,7 +1770,7 @@ function spawn(o) {
     const e2 = new THREE.Mesh(boxC, finEdgeMat); e2.scale.set(6.2, .14, .14); e2.position.set(8.1, w / 2, 1.12); const e3 = e2.clone(); e3.position.y = -w / 2;
     m.add(b, e, e2, e3); m.rotation.z = o.a; m.position.set(0, TCY, o.z);
   }
-  o.mesh = m; o.done = false; o.flash = -1; o.burst = -1; o.fired = o.near = false; scene.add(m); live.push(o);
+  o.mesh = m; o.done = false; o.flash = -1; o.burst = -1; o.near = false; scene.add(m); live.push(o);
 }
 function despawn(o) {
   scene.remove(o.mesh);
@@ -1924,17 +1924,6 @@ const SFX = {
   near(pan) {                             // pinball bumper: thwack + rising zap
     if (!this.ok()) return; const t = actx.currentTime;
     noiseHit(t, .05, .25, 'bandpass', 1800, 900, 3, pan); blip('triangle', 900, 2600, t + .01, .16, .1, pan);
-  },
-  burst(pan, near, step) {                // core light burst going up: an airy whoosh that swells and rises with the column, a faint in-key shimmer on top
-    if (!this.ok()) return; const t = actx.currentTime, v = .45 + .55 * near, f = noteF(step);
-    for (const [q, f0, f1, vol, dur] of [[1.4, 280, 3200, .34, .75], [.7, 900, 7000, .16, .6]]) {   // two noise layers sweeping up, slow swell in, long tail
-      const src = actx.createBufferSource(), bp = actx.createBiquadFilter(), g = actx.createGain();
-      src.buffer = getNoise(); bp.type = 'bandpass'; bp.Q.value = q;
-      bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + dur * .8);
-      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol * v, t + dur * .3); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
-      src.connect(bp).connect(g); panTo(g, pan); src.start(t); src.stop(t + dur + .05);
-    }
-    bell(f * 2, t + .18, .025 * v, .9, pan);
   },
   level() { if (!this.ok()) return; const t = actx.currentTime; [0, 3, 7, 14].forEach((s, j) => bell(261.63 * Math.pow(2, s / 12), t + j * .09, .12, 1.6)); noiseHit(t, 1.2, .08, 'bandpass', 400, 8000, 1.2); for (let i = 0; i < 8; i++) blip('square', noteF(i), noteF(i), t + .4 + i * .05, .1, .06); },
 };
@@ -2309,10 +2298,6 @@ function step(dt) {
     else if (o.kind === 'arc') o.mesh.userData.turn.rotation.z = o.ph + t * o.spin;
     else if (o.kind === 'tdwall' && o.amp) o.mesh.position.x = o.qx + o.amp * Math.sin(Math.PI / BAR * (t - o.tc));
     else if (o.kind === 'burst') {
-      if (!o.fired && t >= o.tb) {   // it fires: a rising zap when it's near enough to matter
-        o.fired = true; const dz = Math.abs(cz - o.z);
-        if (playing && dz < 120) SFX.burst(clamp((o.x - S.x) / 26, -.9, .9), (1 - dz / 120) * (o.deco ? .75 : 1), Math.abs(Math.round(o.x * 3 + o.z)) % 8 + 2);
-      }
       const u = o.mesh.userData, ph = t - o.tb, [w1, w2, bm, hm, cm] = u.mats;
       const warn = ph >= -BAR && ph < 0 ? (ph + BAR) / BAR : 0, act = ph >= 0 && ph < o.dur ? Math.min(1, ph / .06) * (1 - smooth(clamp((ph - o.dur * .55) / (o.dur * .45), 0, 1))) : 0;
       const beatF = ((ph / BEAT) % 1 + 1) % 1;
