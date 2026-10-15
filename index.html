@@ -108,7 +108,7 @@ canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block
 #letterbox.on::before, #letterbox.on::after { height: 10vh; }
 .hud.cine > :not(#levelCard):not(#popup2) { opacity: 0; transition: opacity .4s; }
 .levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-#levels { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+#levels { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .lvl { text-align: left; font: 500 10px/1.3 var(--display); letter-spacing: .14em; color: var(--dim); background: rgba(10, 12, 22, .55); border: 1px solid var(--line); padding: 10px; cursor: pointer; display: grid; gap: 6px; }
 .lvl b { font: 700 13px/1.15 var(--display); letter-spacing: .06em; color: var(--text); }
 .lvl:hover, .lvl:focus-visible { border-color: var(--cyan); outline: none; }
@@ -305,32 +305,52 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 
 // ================= music map (measured from the lightstems instrumental mixdown: 128 BPM, C minor) =================
 const BPM = 128, OFF = 0.495, BEAT = 60 / BPM, BAR = BEAT * 4;
 const LEVELS = [
   { lv: 1, name: 'HALO CITY',  bar: 0,  track: 'LIGHTRIDE',   tc: '#5ad8ff', blurb: 'Greeble city, spires, laser gates' },
   { lv: 2, name: 'HUD TOWERS', bar: 32, track: 'REDSHIFT',    tc: '#ff4656', blurb: 'Giant HUD rings, sweeping lasers' },
-  { lv: 3, name: 'ARC GARDEN', bar: 63, track: 'ULTRAVIOLET', tc: '#b85cff', blurb: 'Turning HUD arcs, light slabs' },
-  { lv: 4, name: 'THE FUNNEL', bar: 80, track: 'LIGHTRIDE',   tc: '#5ad8ff', blurb: 'Tunnel dive, spinning bars, laser grids' },
-  { lv: 5, name: 'THE SPHERE', bar: 96, track: 'REDSHIFT',    tc: '#ff4656', blurb: 'Reach the sphere, enter the light' },
+  { lv: 3, name: 'ARC GARDEN', bar: 70, track: 'ULTRAVIOLET', tc: '#b85cff', blurb: 'Turning HUD arcs, light slabs' },
+  { lv: 4, name: 'THE FUNNEL', bar: 98, track: 'LIGHTRIDE',   tc: '#5ad8ff', blurb: 'Tunnel dive, spinning bars, laser grids' },
+  { lv: 5, name: 'THE SPHERE', bar: 126, track: 'LIGHTRIDE',  tc: '#5ad8ff', blurb: 'Reach the sphere, enter the light' },
+  { lv: 6, name: 'DISC ARRAY', bar: 152, track: 'PERPETUAL MACHINES', tc: '#ff5a8a', blurb: 'Top-down: turning HUD discs, sweeping arms', td: true },
+  { lv: 7, name: 'CORE STACKS', bar: 184, track: 'PERPETUAL MACHINES', tc: '#7fd8ff', blurb: 'Top-down: core towers, light bursts', td: true },
+  { lv: 8, name: 'GLASS SPIRES', bar: 216, track: 'IN THIS CITY', tc: '#ff9a3d', blurb: 'Mirror plain, lasers, light spires' },
 ];
+const L2 = 32, L3 = 70, L4 = 98, L5 = 126, LEND = 150;   // level start bars; LEND = the sphere's hole
+const L6 = 152, L7 = 184, L8 = 216, LFIN = 248;          // after the sphere: warp 150-152, two top-down levels, the mirror plain; LFIN = last beat
+const TD_LV = new Set([6, 7]);                           // levels seen from above (arcade view)
 const SECTIONS = [ // bars [from,to); gate = beats between rings
   { from: 0,   to: 8,   lv: 1, name: 'LAUNCH BAY',   pal: 'halo',   speed: 46, gate: 4 },
-  { from: 8,   to: 24,  lv: 1, name: 'HALO CITY',    pal: 'halo',   speed: 62, gate: 2, pillars: 1.5, lasers: .3, win: .3, portal: .1 },
-  { from: 24,  to: 32,  lv: 1, name: 'SIGNAL DRIFT', pal: 'dusk',   speed: 58, gate: 2, pillars: 1.3, lasers: .35, win: .5, moving: .5, portal: .14, bar: .3 },
-  { from: 32,  to: 40,  lv: 2, name: 'HUD ARRAY',    pal: 'hud',    speed: 50, gate: 4, sweep: .65, portal: .3, win: .25 },
-  { from: 40,  to: 48,  lv: 2, name: 'HUD ARRAY',    pal: 'hud',    speed: 58, gate: 2, sweep: .85, double: .3, portal: .25, bar: .3, win: .35, moving: .3 },
-  { from: 48,  to: 63,  lv: 2, name: 'HUD CORE',     pal: 'hud',    speed: 66, gate: 2, sweep: 1, double: .5, portal: .3, bar: .55, win: .4, moving: .5, tight: 2.2 },
-  { from: 63,  to: 72,  lv: 3, name: 'ARC GARDEN',   pal: 'arc',    speed: 60, gate: 2, win: .45, moving: .45, lasers: .3 },
-  { from: 72,  to: 80,  lv: 3, name: 'ARC CORE',     pal: 'arc',    speed: 64, gate: 2, win: .55, moving: .6, lasers: .35, tight: 2.3 },
-  { from: 80,  to: 88,  lv: 4, name: 'THE FUNNEL',   pal: 'tunnel', speed: 50, gate: 4, spin: .6, fins: .6, grid: .35, cross: .2 },
-  { from: 88,  to: 96,  lv: 4, name: 'FUNNEL DEPTH', pal: 'tunnel', speed: 58, gate: 2, spin: .55, fins: .7, grid: .45, cross: .4 },
-  { from: 96,  to: 104, lv: 5, name: 'THE SPHERE',   pal: 'sphere', speed: 70, gate: 2, win: .5, moving: .5, lasers: .35, portal: .2 },
-  { from: 104, to: 111, lv: 5, name: 'OVERDRIVE',    pal: 'sphere', speed: 76, gate: 1, win: .45, moving: .65, lasers: .3, tight: 2.4 },
-  { from: 111, to: 999, lv: 5, name: 'CORE',         pal: 'sphere', speed: 48, gate: 0 },
+  { from: 8,   to: 24,  lv: 1, name: 'HALO CITY',    pal: 'halo',   speed: 62, gate: 2, pillars: 1.6, lasers: .38, win: .38, portal: .15, moving: .25 },
+  { from: 24,  to: 32,  lv: 1, name: 'SIGNAL DRIFT', pal: 'dusk',   speed: 60, gate: 2, pillars: 1.4, lasers: .42, win: .55, moving: .55, portal: .18, bar: .38 },
+  { from: 32,  to: 40,  lv: 2, name: 'HUD ARRAY',    pal: 'hud',    speed: 52, gate: 4, sweep: .75, portal: .35, win: .3 },
+  { from: 40,  to: 50,  lv: 2, name: 'HUD ARRAY',    pal: 'hud',    speed: 60, gate: 2, sweep: .9, double: .4, portal: .3, bar: .4, win: .4, moving: .4 },
+  { from: 50,  to: 60,  lv: 2, name: 'HUD CORE',     pal: 'hud',    speed: 66, gate: 2, sweep: 1, double: .55, portal: .35, bar: .6, win: .45, moving: .55, tight: 2.15 },
+  { from: 60,  to: 70,  lv: 2, name: 'HUD OVERLOAD', pal: 'hud',    speed: 70, gate: 2, sweep: 1, double: .7, portal: .4, bar: .7, win: .5, moving: .65, tight: 2.05 },
+  { from: 70,  to: 80,  lv: 3, name: 'ARC GARDEN',   pal: 'arc',    speed: 60, gate: 2, win: .5, moving: .5, lasers: .35 },
+  { from: 80,  to: 89,  lv: 3, name: 'ARC CORE',     pal: 'arc',    speed: 64, gate: 2, win: .58, moving: .62, lasers: .4, tight: 2.2 },
+  { from: 89,  to: 98,  lv: 3, name: 'ARC STORM',    pal: 'arc',    speed: 68, gate: 2, win: .65, moving: .72, lasers: .45, tight: 2.1 },
+  { from: 98,  to: 106, lv: 4, name: 'THE FUNNEL',   pal: 'tunnel', speed: 52, gate: 4, spin: .75, fins: .7, grid: .5, cross: .35 },
+  { from: 106, to: 116, lv: 4, name: 'FUNNEL DEPTH', pal: 'tunnel', speed: 60, gate: 2, spin: .65, fins: .8, grid: .55, cross: .5, fast: 1 },
+  { from: 116, to: 126, lv: 4, name: 'FUNNEL CORE',  pal: 'tunnel', speed: 64, gate: 2, spin: .75, fins: .85, grid: .65, cross: .65, fast: 1 },
+  { from: 126, to: 137, lv: 5, name: 'THE SPHERE',   pal: 'sphere', speed: 70, gate: 2, win: .55, moving: .55, lasers: .4, portal: .25, bar: .5 },
+  { from: 137, to: 150, lv: 5, name: 'OVERDRIVE',    pal: 'sphere', speed: 76, gate: 1, win: .5, moving: .7, lasers: .35, tight: 2.25 },
+  { from: 150, to: 152, lv: 5, name: 'INTO THE LIGHT', pal: 'radar', speed: 80, gate: 0 },
+  { from: 152, to: 160, lv: 6, name: 'DISC ARRAY',   pal: 'radar',  speed: 52, gate: 4, sweep: .7, wall: .3 },
+  { from: 160, to: 172, lv: 6, name: 'DISC SWEEP',   pal: 'radar',  speed: 57, gate: 2, sweep: .9, double: .35, wall: .45, moving: .4 },
+  { from: 172, to: 184, lv: 6, name: 'DISC STORM',   pal: 'radar',  speed: 61, gate: 2, sweep: 1, double: .6, wall: .55, moving: .6, tight: 2.3 },
+  { from: 184, to: 192, lv: 7, name: 'CORE STACKS',  pal: 'cores',  speed: 52, gate: 4, burst: .3, wall: .2, sweep: .15 },
+  { from: 192, to: 204, lv: 7, name: 'CORE ARRAY',   pal: 'cores',  speed: 57, gate: 2, burst: .45, wall: .3, sweep: .25, moving: .3 },
+  { from: 204, to: 216, lv: 7, name: 'CORE MELTDOWN', pal: 'cores', speed: 61, gate: 2, burst: .6, wall: .4, sweep: .35, double: .3, moving: .45, tight: 2.4 },
+  { from: 216, to: 224, lv: 8, name: 'GLASS SPIRES', pal: 'prism',  speed: 56, gate: 4, shards: .8, lasers: .3, win: .3 },
+  { from: 224, to: 236, lv: 8, name: 'MIRROR PLAIN', pal: 'prism',  speed: 64, gate: 2, shards: 1.2, lasers: .4, win: .5, moving: .5, portal: .15, bar: .4 },
+  { from: 236, to: 248, lv: 8, name: 'PRISM STORM',  pal: 'prism',  speed: 70, gate: 2, shards: 1.5, lasers: .45, win: .6, moving: .7, tight: 2.2, portal: .2, bar: .6 },
+  { from: 248, to: 999, lv: 8, name: 'HORIZON',      pal: 'prism',  speed: 50, gate: 0 },
 ];
-const END_T = OFF + 111 * BAR + 1.0;
+const END_T = OFF + LFIN * BAR + 1.0;
 const barAt = t => Math.max(0, Math.floor((t - OFF) / BAR));
 const secAtBar = b => SECTIONS.find(s => b >= s.from && b < s.to) || SECTIONS[0];
 const secAtT = t => secAtBar(barAt(t));
@@ -350,6 +370,12 @@ const PAL = {
             ground: [[0x1a1020, 1]], pillar: 0x2a1424, pillarGlow: 0xff6a8a, sky: 0xff4070, gnd: 0x100410 },
   tunnel: { haloC: 0x000000, bg: 0x86a6ba, fog: 0x86a6ba, dens: .0115, gate: 0xff4656, glowP: .12, glow: [0xffffff, 0xd8f2ff],
             ground: [[0x8ea6b8, 4], [0x6c8496, 3], [0xadc0ce, 2], [0x50667a, 2]], pillar: 0x8ea6b8, pillarGlow: 0xffffff, sky: 0xd8ecff, gnd: 0x405868 },
+  radar:  { haloC: 0x3a1430, bg: 0x0c0610, fog: 0x160a18, dens: .0016, gate: 0x5ad8ff, glowP: .008, glow: [0xffffff, 0xffc0d8, 0x8ab0ff],   // image 1: mauve / red / blue greeble sea
+            ground: [[0x3a3040, 4], [0x2a2232, 4], [0x5a1822, 1.6], [0x3a0e18, 1.4], [0x182650, 1.6], [0x1a1420, 3]], pillar: 0x8a7890, pillarGlow: 0xffd8ec, sky: 0xd090c0, gnd: 0x301020 },
+  cores:  { haloC: 0x0a1424, bg: 0x040a18, fog: 0x0c2248, dens: .0058, gate: 0x7fe8ff, glowP: .0, glow: [0xbfe8ff],                     // image 2: dark steel core towers in deep space
+            ground: [[0x2a3242, 1]], pillar: 0x3a4456, pillarGlow: 0x9fe0ff, sky: 0x8aa8d8, gnd: 0x0a0e18 },
+  prism:  { haloC: 0x401030, bg: 0x1a0818, fog: 0x2a0c22, dens: .0017, gate: 0xffc85a, glowP: 0, glow: [0xffffff],                       // image 3: mirror plain at dusk, glass spires on the horizon
+            ground: [[0x2a1a24, 1]], pillar: 0x3a2030, pillarGlow: 0xffa0d0, sky: 0xff9ac0, gnd: 0x2a0a18 },
 };
 const GOLD = 0xffc85a;
 const PAL_ORIG = JSON.parse(JSON.stringify(PAL));
@@ -376,7 +402,7 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ==
                 set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 
 // ================= forward motion is a pure function of song time =================
-const DT = 1 / 120, TMAX = 220, NT = Math.ceil(TMAX / DT) + 2;
+const DT = 1 / 120, TMAX = 520, NT = Math.ceil(TMAX / DT) + 2;
 const zT = new Float64Array(NT), vT = new Float64Array(NT);
 { let v = SECTIONS[0].speed, z = 0;
   for (let i = 0; i < NT; i++) { zT[i] = z; vT[i] = v; v += (secAtT(i * DT).speed - v) * Math.min(1, DT * 1.2); z -= v * DT; } }
@@ -388,26 +414,31 @@ const palAtZ = z => PAL[secAtT(tAtZ(z)).pal];
 // ================= flight space per level =================
 const X_LIM = 11, LANE = 14.5, RING_R = 3.2;
 const TUN_R = 11, TCY = 9.5, TUN_LIM = 6.8;           // tunnel wall radius, axis height, craft limit
-const T_TUN = OFF + 80 * BAR, Z_TUN = zAt(T_TUN);       // where the funnel wall stands
-const Z_TEND = zAt(OFF + 96 * BAR);                       // tunnel exit into open space (level 5)
-const RS = 150, Z_HOLE = zAt(OFF + 111 * BAR), Z_SPH = Z_HOLE - RS;   // the sphere: its front blue hole is reached on the last beat
-const LV_BAND = { 1: [4.6, 14.5], 2: [11.5, 21], 3: [4.6, 14.5], 4: [TCY - TUN_LIM, TCY + TUN_LIM], 5: [4.6, 17] };
-const targetLv = bar => (bar >= 30 && bar < 32) ? 2 : (bar >= 61 && bar < 63) ? 3 : (bar >= 77 && bar < 80) ? 4 : (bar >= 95 && bar < 96) ? 5 : secAtBar(bar).lv; // gates anticipate the next level
-function craftBand(t) { const b = barAt(t); if ((b >= 30 && b < 34) || (b >= 61 && b < 65) || (b >= 77 && b < 80)) return [4.6, 21];
-  if (b >= 95 && b < 98) return [2.7, 17]; return LV_BAND[secAtBar(b).lv]; }
+const T_TUN = OFF + L4 * BAR, Z_TUN = zAt(T_TUN);       // where the funnel wall stands
+const Z_TEND = zAt(OFF + L5 * BAR);                       // tunnel exit into open space (level 5)
+const RS = 150, Z_HOLE = zAt(OFF + LEND * BAR), Z_SPH = Z_HOLE - RS;   // the sphere: its front blue hole is reached on the last beat
+// top-down levels (6, 7): the craft holds one altitude; the stick's up/down moves it up/down the screen instead (S.y = how far ahead of the scroll line it flies)
+const ALT = 24, X_TD = 24, F_MIN = -3, F_MAX = 21, F0 = 9;   // flight altitude, lane half-width, forward offset range + the neutral offset rings are timed for
+const T_HOLE = OFF + LEND * BAR, Z_L6 = zAt(OFF + L6 * BAR), Z_L7 = zAt(OFF + L7 * BAR), Z_L8 = zAt(OFF + L8 * BAR);
+const LV_BAND = { 1: [4.6, 14.5], 2: [11.5, 21], 3: [4.6, 14.5], 4: [TCY - TUN_LIM, TCY + TUN_LIM], 5: [4.6, 17], 6: [F_MIN, F_MAX], 7: [F_MIN, F_MAX], 8: [4.6, 14.5] };
+const targetLv = bar => (bar >= L2 - 2 && bar < L2) ? 2 : (bar >= L3 - 2 && bar < L3) ? 3 : (bar >= L4 - 3 && bar < L4) ? 4 : (bar >= L5 - 1 && bar < L5) ? 5 : (bar >= L8 - 1 && bar < L8) ? 8 : secAtBar(bar).lv; // gates anticipate the next level
+function craftBand(t) { const b = barAt(t); if ((b >= L2 - 2 && b < L2 + 2) || (b >= L3 - 2 && b < L3 + 2) || (b >= L4 - 3 && b < L4)) return [4.6, 21];
+  if (b >= L5 - 1 && b < L5 + 2) return [2.7, 17]; if (b >= LEND && b < L6) return [F_MIN, F_MAX]; return LV_BAND[secAtBar(b).lv]; }
+const tdAt = t => { const b = barAt(t); return b >= LEND && b < L8 ? 1 : 0; };   // 1 = arcade view from above
 
 // ================= difficulty: same ring line everywhere, fewer / gentler obstacles on easier modes =================
 const DIFFS = {
-  easy:   { key: 'easy',   name: 'LIGHT RIDER', tier: 'EASY', blurb: 'Starts easy, ramps up to Pro and Hyper',  m: .3,  pm: .45, po: .4, bar: 0,  mov: 0,  dbl: 0,  gap: 3.0, hole: 3.0, fast: 1,    drain: .014, miss: .07, crash: .22 },
-  medium: { key: 'medium', name: 'PRO RIDER', tier: 'MEDIUM', blurb: 'Medium, then Hyper in the Funnel', m: .72, pm: .8, po: .7, bar: .5, mov: .6, dbl: .5, gap: 2.7, hole: 2.7, fast: 1.25, drain: .02,  miss: .1,  crash: .28 },
-  hard:   { key: 'hard',   name: 'HYPER RIDER', tier: 'HARD', blurb: 'Every laser, tight gaps, all the way',         m: 1,   pm: 1,   po: 1, bar: 1,  mov: 1,  dbl: 1,  gap: 0,   hole: 0,   fast: 1.5,  drain: .024, miss: .13, crash: .34 },
+  easy:   { key: 'easy',   name: 'LIGHT RIDER', tier: 'EASY', blurb: 'Starts easy, ramps up to Pro and Hyper',  m: .35, pm: .5,  po: .45, bar: 0, mov: 0,  dbl: 0,  gap: 3.0, hole: 3.0, hub: 3.2, fast: 1,   drain: .014, miss: .07, crash: .22 },
+  medium: { key: 'medium', name: 'PRO RIDER', tier: 'MEDIUM', blurb: 'Medium, then Hyper in the Funnel', m: .82, pm: .9, po: .8, bar: .65, mov: .72, dbl: .65, gap: 2.55, hole: 2.55, hub: 2.7, fast: 1.4, drain: .022, miss: .12, crash: .31 },
+  hard:   { key: 'hard',   name: 'HYPER RIDER', tier: 'HARD', blurb: 'Every laser, tight gaps, all the way',         m: 1.4, pm: 1.35, po: 1.4, bar: 1.5, mov: 1.5, dbl: 1.5, gap: 0,   hole: 0,   hub: 2.2, fast: 1.75, drain: .028, miss: .16, crash: .4 },
 };
 let D = DIFFS[store.get('lr_diff', 'medium')] || DIFFS.medium;
 // each mode evolves through the run: tier used for levels 1, 2, 3
 const PLAN = { easy: ['easy', 'medium', 'medium', 'hard', 'hard'], medium: ['medium', 'medium', 'hard', 'hard', 'hard'], hard: ['hard', 'hard', 'hard', 'hard', 'hard'] };
 const TIER_GLOW = { easy: 0x0f3a4c, medium: 0x40300e, hard: 0x46101e };   // horizon tint per tier
 let runStartLv = store.get('lr_lv', 1), runLoop = 1;   // the ladder counts from the level you start on; each loop climbs two steps
-const tierKey = lv => PLAN[D.key][Math.max(0, Math.min(4, lv - runStartLv + (runLoop - 1) * 2))];
+const tierKey = lv => { const k = PLAN[D.key][Math.max(0, Math.min(4, lv - runStartLv + (runLoop - 1) * 2))];
+  return D.key === 'easy' && TD_LV.has(lv) && k === 'hard' ? 'medium' : k; };   // Light Rider: the top-down levels top out at Pro
 const tierAt = lv => DIFFS[tierKey(lv)];
 
 // ================= course generation (fixed seed: same city every run) =================
@@ -417,20 +448,25 @@ function genCourse() {
   const r = rng32(128);
   const gates = [];
   let px = 0, py = 8.5, pt = 0;
-  for (let b = 4; b < 111 * 4; b++) {
+  for (let b = 4; b < LFIN * 4; b++) {
     const bar = Math.floor(b / 4), sec = secAtBar(bar);
     if (!sec.gate || b % sec.gate) continue;
     const t = OFF + b * BEAT, gap = t - pt, lv = targetLv(bar), [bmin, bmax] = LV_BAND[lv];
+    if (TD_LV.has(lv)) {   // seen from above: rings lie flat at the flight altitude, the line wanders wider; placed F0 ahead so the neutral position hits them on the beat
+      const st = Math.min(6.5, 10 * gap);   // gentle side-steps between rings: from above they read as big moves
+      px = clamp(px + (r() * 2 - 1) * st, -X_TD + 2, X_TD - 2); py = F0;
+      gates.push({ kind: 'gate', t, z: zAt(t) - F0, x: px, y: py, beat: b, td: true }); pt = t; continue;
+    }
     if (lv === 4) {
-      const st = Math.min(3.2, 7 * gap), pull = bar < 80 ? .45 : .2;
+      const st = Math.min(4, 8 * gap), pull = bar < L4 ? .45 : .14;
       px = lerp(px, 0, pull) + (r() * 2 - 1) * st; py = lerp(py, TCY, pull) + (r() * 2 - 1) * st;
-      const dx = px, dy = py - TCY, rr = Math.hypot(dx, dy); if (rr > 4.5) { px = dx / rr * 4.5; py = TCY + dy / rr * 4.5; }
+      const dx = px, dy = py - TCY, rr = Math.hypot(dx, dy); if (rr > 5.2) { px = dx / rr * 5.2; py = TCY + dy / rr * 5.2; }
     } else {
       const st = Math.min(8.5, 14 * gap);
       px = clamp(px + (r() * 2 - 1) * st, -X_LIM + 1, X_LIM - 1);
       py = clamp(lerp(py, (bmin + bmax) / 2, .25) + (r() * 2 - 1) * st * .5, bmin + 1.2, bmax - 1.5);
     }
-    if (bar >= 107) { const k = bar >= 110 ? .7 : .35; px = lerp(px, 0, k); py = lerp(py, TCY, k); }   // line up with the sphere's central hole
+    if (bar >= LEND - 4 && bar < LEND) { const k = bar >= LEND - 1 ? .7 : .35; px = lerp(px, 0, k); py = lerp(py, TCY, k); }   // line up with the sphere's central hole
     gates.push({ kind: 'gate', t, z: zAt(t), x: px, y: py, beat: b });
     pt = t;
   }
@@ -440,12 +476,27 @@ function genCourse() {
   };
   // "does it appear?" rolls come from rd (one roll per chance, every mode), placement from per-obstacle streams,
   // so an easier mode always gets a subset of the harder mode's obstacles in the same places
-  const rd = rng32(4242), rk = rng32(77), rt = rng32(99);
+  const rd0 = rng32(4242), rn = rng32(5151), rk = rng32(77), rt = rng32(99);
   for (let i = 0; i < gates.length; i++) {
     const g0 = gates[i], g1 = gates[i + 1];
     course.push(g0);
     if (!g1) break;
-    const sec = secAtT(g0.t), rr = k => rng32(i * 977 + k * 101 + 11), D = tierAt(sec.lv);
+    const sec = secAtT(g0.t), rr = k => rng32(i * 977 + k * 101 + 11), D = tierAt(sec.lv), rd = g0.beat >= LEND * 4 ? rn : rd0;   // levels 6+ roll from their own stream: levels 1-5 stay as they were
+    // L8 glass shards: like the L1 spires, always offset from the straight line between rings
+    const ns = sec.shards ? Math.floor(sec.shards * D.pm + rd()) : 0, q7 = rr(7);
+    for (let k = 0; k < ns; k++) {
+      const f = .25 + q7() * .5, z = lerp(g0.z, g1.z, f), lx = lerp(g0.x, g1.x, f), w = 2.4 + q7() * 2.2;
+      let side = q7() < .5 ? -1 : 1, x = lx + side * (w + 3 + q7() * 4.5);
+      if (Math.abs(x) > LANE + 3) { side = -side; x = lx + side * (w + 3 + q7() * 3); }
+      if (Math.abs(x) > LANE + 5) continue;
+      course.push({ kind: 'shard', z, x, w, h: 34 + q7() * 40, v: Math.floor(q7() * 6) });
+    }
+    // top-down laser walls: a beam across the whole lane with one gap on the ring line, some sliding left/right on the beat
+    if (sec.wall && rd() < sec.wall * D.m) {
+      const q = rr(8), f = .45 + q() * .1, z = lerp(g0.z, g1.z, f), qx = lerp(g0.x, g1.x, f), gw = (D.gap || sec.tight || 2.6) * 1.25;
+      const amp = q() < (sec.moving || 0) * D.mov ? 3 + q() * 3.5 : 0;
+      course.push({ kind: 'tdwall', z, tc: tAtZ(z + F0), qx, gw, amp });
+    }
     // L1 spires: always offset from the straight line between rings
     const n = Math.floor((sec.pillars || 0) * D.pm + rd()), q1 = rr(1);
     for (let k = 0; k < n; k++) {
@@ -465,7 +516,7 @@ function genCourse() {
     if (i > 2 && rd() < (sec.portal || 0) * D.po) { const q = rr(2); course.push({ kind: 'portal', z: g0.z - .01, hx: g0.x, hy: g0.y, col: i % 3, bar: q() < (sec.bar || 0) * D.bar, tc: g0.t, th0: q() * 6.28, w: (q() < .5 ? -1 : 1) * Math.PI / BAR }); }
     // laser frame / horizontal slot / vertical slot around the ring line, some sliding on the beat
     if (rd() < (sec.win || 0) * D.m) {
-      const q = rr(3), f = .4 + q() * .2, z = lerp(g0.z, g1.z, f), qx = lerp(g0.x, g1.x, f), qy = lerp(g0.y, g1.y, f), ty = q(), gap = D.gap || sec.tight || 2.5;
+      const q = rr(3), f = .4 + q() * .2, z = lerp(g0.z, g1.z, f), qx = lerp(g0.x, g1.x, f), qy = lerp(g0.y, g1.y, f), ty = q(), gap = D.gap || Math.min(sec.tight || 9, 2.2);
       const hw = ty < .45 ? gap : ty < .75 ? 99 : gap * .95, hh = ty < .45 ? gap : ty < .75 ? gap * .95 : 99;
       const mv = q(), amp = mv < (sec.moving || 0) * D.mov ? 2.5 + q() * 2.5 : 0;
       course.push({ kind: 'win', z, tc: tAtZ(z), qx, qy, hw, hh, amp, axis: hw === 99 ? 'y' : 'x' });
@@ -474,27 +525,28 @@ function genCourse() {
     if (rd() < (sec.spin || 0) * D.m) {
       const q = rr(4), z = lerp(g0.z, g1.z, .5), [qx, qy] = pathAt(z), phi = Math.atan2(qy - TCY, qx);
       const dir = q() < .5 ? -1 : 1, n = q() < (sec.cross || 0) * D.bar ? 2 : 1;
-      course.push({ kind: 'spin', z, n, tc: tAtZ(z), th0: phi + Math.PI / n / 2, w: dir * Math.PI / BAR * (sec.fast ? D.fast : 1) });
+      course.push({ kind: 'spin', z, n, hub: D.hub, tc: tAtZ(z), th0: phi + Math.PI / n / 2, w: dir * Math.PI / BAR * (sec.fast ? D.fast : 1) });
     }
     if (rd() < (sec.grid || 0) * D.m) {
       const q = rr(5), z = lerp(g0.z, g1.z, .3 + q() * .4), [qx, qy] = pathAt(z);
-      course.push({ kind: 'grid', z, hx: qx, hy: qy, hr: D.hole || (sec.fast ? 2.3 : 2.6) });
+      course.push({ kind: 'grid', z, hx: qx, hy: qy, hr: D.hole || (sec.fast ? 2.15 : 2.4) });
     }
     if (rd() < (sec.fins || 0) * D.m) {
       const q = rr(6), z = lerp(g0.z, g1.z, .3 + q() * .4), [qx, qy] = pathAt(z), phi = Math.atan2(qy - TCY, qx);
-      course.push({ kind: 'fin', z, a: phi + Math.PI + (q() - .5) * 1.4, span: .7 + q() * .5 });
+      const quarter = D.key === 'hard' && q() < .5 ? (q() < .5 ? -1 : 1) : 0;
+      course.push({ kind: 'fin', z, a: phi + (quarter ? quarter * Math.PI / 2 + (q() - .5) * .5 : Math.PI + (q() - .5) * 1.4), span: .7 + q() * .5 });
     }
   }
   // L2: HUD towers along the lane (same in every mode), some carrying sweeping laser arms above or below the ring line
-  { let z = zAt(OFF + 32 * BAR) + 30, side = 1, ci = 0;
-    const zEnd = zAt(OFF + 61 * BAR);
+  { let z = zAt(OFF + L2 * BAR) + 30, side = 1, ci = 0;
+    const zEnd = zAt(OFF + (L3 - 2) * BAR);
     while (z > zEnd) {
       const R = 15 + rt() * 8, zc = z - R;
       side = rt() < .75 ? -side : side;
       const x = side * (12.8 + rt() * 5), spin = rt() < .5 ? -1 : 1, gapZ = rt();
       const t = tAtZ(zc), sec = secAtT(t), D = tierAt(sec.lv);
       course.push({ kind: 'hud', z: zc, x, R, col: ci % 3, spin });
-      if (rd() < (sec.lv === 2 ? (sec.sweep || 0) * D.m : 0)) {
+      if (rd0() < (sec.lv === 2 ? (sec.sweep || 0) * D.m : 0)) {
         const q = rng32(ci * 733 + 5);
         let lo = 99, hi = -99;
         for (const g of gates) if (g.z < zc + R && g.z > zc - R) { lo = Math.min(lo, g.y); hi = Math.max(hi, g.y); }
@@ -509,7 +561,7 @@ function genCourse() {
     }
   }
   // Arc Garden: giant turning HUD arcs (some spanning the lane) and glowing light slabs
-  { const ra = rng32(631), z0 = zAt(OFF + 62.5 * BAR), z1 = zAt(OFF + 79.8 * BAR), COLS = [0xe8f6ff, 0xb28cff, 0xff8a3d, 0xd8ff6a];
+  { const ra = rng32(631), z0 = zAt(OFF + (L3 - .5) * BAR), z1 = zAt(OFF + (L4 - .2) * BAR), COLS = [0xe8f6ff, 0xb28cff, 0xff8a3d, 0xd8ff6a];
     let z = z0, k = 0;
     while (z > z1) {
       const span = ra() < .28, R = span ? 23 + ra() * 5 : 8 + ra() * 16, side = ra() < .5 ? -1 : 1;   // spanning arcs are big portals: the flight band sits inside the opening
@@ -525,8 +577,75 @@ function genCourse() {
       z -= 9 + ra() * 18;
     }
   }
+  // ---- levels 6 + 7, seen from above: a packed field of discs (HUD discs, then core towers) under the lane ----
+  const tdGates = gates.filter(g => g.td);
+  const pathTD = (z, ease) => {   // ring line in the top-down levels: straight between rings, or eased like the autopilot's
+    let a = null; for (const g of tdGates) { if (g.z <= z) { if (!a) return g.x; const f = (a.z - z) / (a.z - g.z); return lerp(a.x, g.x, ease ? f * f * (3 - 2 * f) : f); } a = g; }
+    return a ? a.x : 0;
+  };
+  const tdTier = z => tierAt(secAtT(tAtZ(z + F0)).lv);
+  function packDiscs(z0, z1, rMin, rMax, seed) {   // non-overlapping circles over x +-75 between z0 and z1 (z0 > z1)
+    const rp = rng32(seed), out = [];
+    for (let z = z0; z > z1; z -= 9) {
+      for (let k = 0; k < 7; k++) {
+        const R = rMin + Math.pow(rp(), 1.4) * (rMax - rMin), x = (rp() * 2 - 1) * 75, zc = z - rp() * 9;
+        if (zc < z1) continue;
+        let ok = true; for (let j = out.length - 1; j >= 0 && ok; j--) { const o = out[j]; if (o.z - o.R > zc + R + 60) break; if (Math.hypot(o.x - x, o.z - zc) < o.R + R + 1.5) ok = false; }
+        if (ok) { out.push({ x, z: zc, R }); out.sort((a, b) => b.z - a.z); }
+      }
+    }
+    return out;
+  }
+  function sweepPhase(o, n, q) {   // pick a start angle so the ring line (at the neutral offset) stays clear of the arms; null if it can't
+    const P = Math.PI / n, smp = [];
+    for (let z = o.z + o.R; z > o.z - o.R; z -= .8) for (const e of [0, 1]) { const x = pathTD(z, e), dx = x - o.x, dz = z - o.z, rr = Math.hypot(dx, dz); if (rr < o.R * 1.05) smp.push([Math.atan2(dz, dx), rr, tAtZ(z + F0)]); }
+    let best = -1, bt = 0; const off = q() * P;
+    for (let k = 0; k < 48; k++) {
+      const th0 = off + k / 48 * P; let mn = 99;
+      for (const [a, rr, t] of smp) { let d = ((a - th0 - o.w * t) % P + P) % P; d = Math.min(d, P - d); mn = Math.min(mn, d * rr); }
+      if (mn > best + .01) { best = mn; bt = th0; }
+      if (mn > 3.2) break;   // good enough: keep the random start so the arms don't all line up
+    }
+    return best >= 2.2 ? bt : null;
+  }
+  { // L6 RADAR FIELD: HUD discs (image 1) with sweeping laser arms at flight altitude
+    const rq = rng32(606);
+    packDiscs(Z_L6 + 70, Z_L7 + 10, 11, 27, 616).forEach((d, k) => {
+      const col = k % 3, spin = rq() < .5 ? -1 : 1, sec = secAtT(tAtZ(d.z + F0)), D = tdTier(d.z);
+      const lift = 5 + rq() * 8;   // drums raised off the greeble sea on greebled pedestals, at varied heights
+      course.push({ kind: 'hud', z: d.z, x: d.x, R: d.R, col, spin, td: true, lift });
+      if (sec.lv === 6 && Math.abs(d.x) - d.R < X_TD - 3 && d.R > 13 && rq() < (sec.sweep || 0) * D.m) {
+        const q = rng32(k * 313 + 9), n = q() < (sec.double || 0) * D.dbl ? 2 : 1;
+        const o = { kind: 'sweep', z: d.z, x: d.x, R: d.R * 1.02, h: ALT, base: 7 + lift, col, n, w: (q() < .5 ? -1 : 1) * Math.PI * 2 / (n * 2.5 * BAR) };
+        const th = sweepPhase(o, n, q); if (th != null) { o.th0 = th; course.push(o); }
+      }
+    });
+  }
+  { // L7 CORE STACKS: dark greeble core towers rising out of deep space (image 2); some fire a column of light on the beat
+    const rq = rng32(707);
+    packDiscs(Z_L7 + 40, Z_L8 + 60, 8, 23, 717).forEach((d, k) => {
+      const top = -8 + rq() * 11, sec = secAtT(tAtZ(d.z + F0)), D = tdTier(d.z), roll = rq();
+      course.push({ kind: 'core', z: d.z, x: d.x, R: d.R, top });
+      if (sec.lv === 7 && Math.abs(d.x) > X_TD + 12 && Math.abs(d.x) < 62 && rq() < .4) {   // show bursts off the lane, on the beat: light + sound, out of reach
+        const rb = clamp(d.R * .32, 2.6, 5.6);
+        course.push({ kind: 'burst', z: d.z, x: d.x, R: rb, top, tb: OFF + Math.round((tAtZ(d.z + F0) - OFF) / BEAT - 1 - Math.floor(rq() * 3)) * BEAT, dur: BEAT * 2, deco: true });
+      }
+      if (sec.lv !== 7 || Math.abs(d.x) - d.R > X_TD - 1) return;
+      if (roll < (sec.burst || 0) * D.m) {   // light burst from the core's eye, fired on the beat as you pass; kept off the ring line
+        const rb = clamp(d.R * .32, 2.6, 5.6) * (D.key === 'hard' ? 1.12 : 1);
+        let near = 99; for (let z = d.z + rb + 3; z > d.z - rb - 3; z -= .7) for (const e of [0, 1]) near = Math.min(near, Math.hypot(pathTD(z, e) - d.x, z - d.z));
+        if (near < rb + (D.key === 'hard' ? 1.6 : D.key === 'medium' ? 2.6 : 3.6)) return;   // room to stay on the ring line
+        const tb = OFF + Math.round((tAtZ(d.z + F0) - OFF) / BEAT - 1) * BEAT;
+        course.push({ kind: 'burst', z: d.z, x: d.x, R: rb, top, tb, dur: BEAT * 2.5 });
+      } else if (d.R > 12 && roll < ((sec.burst || 0) + (sec.sweep || 0)) * D.m) {
+        const q = rng32(k * 419 + 3), n = q() < (sec.double || 0) * D.dbl ? 2 : 1;
+        const o = { kind: 'sweep', z: d.z, x: d.x, R: d.R * 1.02, h: ALT, base: top, col: 2, n, w: (q() < .5 ? -1 : 1) * Math.PI * 2 / (n * 2.5 * BAR) };
+        const th = sweepPhase(o, n, q); if (th != null) { o.th0 = th; course.push(o); }
+      }
+    });
+  }
   // skyline: big towers outside the lane every bar (city levels only)
-  for (let bar = 0; bar < 79; bar++) {
+  for (let bar = 0; bar < L4 - 1; bar++) {
     const sec = secAtBar(bar), t0 = OFF + bar * BAR, z0 = zAt(t0), z1 = zAt(t0 + BAR), n = 2 + Math.floor(rk() * 3);
     for (let k = 0; k < n; k++) {
       const side = rk() < .5 ? -1 : 1, rad = 3 + rk() * 5, minX = sec.lv === 2 ? 46 : sec.lv === 3 ? 62 : 24;
@@ -598,8 +717,24 @@ function flagUpdate(...ms) { for (const m of ms) { m.instanceMatrix.needsUpdate 
 
 // ---------- greeble ground: recycled rows of instanced blocks ----------
 const COLS = 64, NARROW = 30, ROWS = 84, CELL = 3.2;   // wide plane (WIDE levels); the others keep the centre NARROW columns
-const WIDE = new Set([1, 3]);                             // levels whose plane runs wide, with square holes where columns rise through
+const WIDE = new Set([1, 3, 6]);                            // levels whose plane runs wide, with square holes where columns rise through
 const ground = instanced(boxGeo, groundMat, COLS * ROWS), glowBlocks = instanced(boxGeo, glowMat, COLS * ROWS);
+const SUB = 3, groundSub = instanced(boxGeo, groundMat, COLS * ROWS * SUB);   // RADAR FIELD: extra sub-blocks so each cell can split into up to 4
+function clearSub(i) { for (let k = 0; k < SUB; k++) groundSub.setMatrixAt(i * SUB + k, ZERO); }
+const SPLITS = [[[0, 0, 1, 1]], [[0, 0, .5, 1], [.5, 0, .5, 1]], [[0, 0, 1, .5], [0, .5, 1, .5]], [[0, 0, .5, .5], [.5, 0, .5, .5], [0, .5, .5, .5], [.5, .5, .5, .5]],
+                [[0, 0, .62, 1], [.62, 0, .38, .5], [.62, .5, .38, .5]], [[0, 0, 1, .38], [0, .38, .5, .62], [.5, .38, .5, .62]]];   // cell layouts (x, z, w, d as fractions)
+function denseCell(i, cx, z, r, pal) {   // a cell broken into 1-4 blocks of different heights and shades: dense, never the same twice
+  const lay = SPLITS[Math.floor(r() * SPLITS.length)], ox = cx - CELL / 2, oz = z - CELL / 2, far = Math.abs(cx) > 18;
+  clearSub(i); glowBlocks.setMatrixAt(i, ZERO); ground.setMatrixAt(i, ZERO);
+  lay.forEach(([fx, fz, fw, fd], k) => {
+    const g = .06 + r() * .1, w = fw * CELL - g, d = fd * CELL - g;
+    let h = .15 + Math.min(2.2, -Math.log(1 - r() * .97) * .45); if (far) h *= 1 + r() * 1.6;
+    dummy.position.set(ox + (fx + fw / 2) * CELL + (r() - .5) * .08, 0, oz + (fz + fd / 2) * CELL + (r() - .5) * .08); dummy.rotation.set(0, 0, 0); dummy.scale.set(w, h, d); dummy.updateMatrix();
+    if (k === 0 && r() < pal.glowP * 1.6) { glowBlocks.setMatrixAt(i, dummy.matrix); glowBlocks.setColorAt(i, tmpC.set(pal.glow[Math.floor(r() * pal.glow.length)]).multiplyScalar(1.6)); return; }
+    const m = k === 0 ? ground : groundSub, j = k === 0 ? i : i * SUB + k - 1;
+    m.setMatrixAt(j, dummy.matrix); m.setColorAt(j, tmpC.set(pickW(pal.ground, r())).multiplyScalar(.7 + r() * .55));
+  });
+}
 let rowFirst = 0, holeGen = -1; const holeRows = new Map();
 function buildHoles() {   // rows -> column footprints (pillars + towers), padded so each hole is a clean square of missing cells
   holeRows.clear(); holeGen = courseGen;
@@ -634,12 +769,14 @@ function holeFrame(o, m) {   // thin lit frame round the square hole a column ri
 }
 function fillRow(rw) {
   const slot = ((rw % ROWS) + ROWS) % ROWS, z = -rw * CELL, r = rng32(rw * 7919 + 17);
-  if (z < Z_TUN - 3) { for (let c = 0; c < COLS; c++) { ground.setMatrixAt(slot * COLS + c, ZERO); glowBlocks.setMatrixAt(slot * COLS + c, ZERO); } flagUpdate(ground, glowBlocks); return; }
+  for (let c = 0; c < COLS; c++) clearSub(slot * COLS + c); flagUpdate(groundSub);
+  if ((z < Z_TUN - 3 && z > Z_L6 + 70) || z < Z_L7 - 30) { for (let c = 0; c < COLS; c++) { ground.setMatrixAt(slot * COLS + c, ZERO); glowBlocks.setMatrixAt(slot * COLS + c, ZERO); } flagUpdate(ground, glowBlocks); return; }
   if (holeGen !== courseGen) buildHoles();
-  const pal = palAtZ(z), wide = WIDE.has(secAtT(tAtZ(z)).lv), c0 = (COLS - NARROW) / 2;
+  const pal = palAtZ(z), wide = WIDE.has(secAtT(tAtZ(z)).lv) || z < Z_TUN, c0 = (COLS - NARROW) / 2;
   for (let c = 0; c < COLS; c++) {
     const i = slot * COLS + c, cx = (c - (COLS - 1) / 2) * CELL, x = cx + (r() - .5) * .7;
     if ((!wide && (c < c0 || c >= c0 + NARROW)) || (wide && inHole(rw, cx, z))) { ground.setMatrixAt(i, ZERO); glowBlocks.setMatrixAt(i, ZERO); continue; }
+    if (pal === PAL.radar) { denseCell(i, cx, z, r, pal); continue; }
     const fw = CELL * (pal.flat ? .86 + r() * .12 : .5 + r() * .5), fd = CELL * (pal.flat ? .7 + r() * .28 : .5 + r() * .5);
     let h = .25 + Math.min(2.9, -Math.log(1 - r() * .985) * .75);
     if (Math.abs(x) > 18) h *= 1 + r() * 2.2;
@@ -991,7 +1128,7 @@ function makeSlab(o) {
 const arcFloor = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x0c1624, roughness: .3, metalness: .5 }));
 arcFloor.rotation.x = -Math.PI / 2; arcFloor.position.y = .02; scene.add(arcFloor); arcFloor.userData.gen = -1;
 function buildArcFloor() {
-  const zA = zAt(OFF + 61 * BAR), zB = Z_TUN + 4, sh = new THREE.Shape();   // shape (x, -z): the plane is laid flat by the rotation
+  const zA = zAt(OFF + (L3 - 2) * BAR), zB = Z_TUN + 4, sh = new THREE.Shape();   // shape (x, -z): the plane is laid flat by the rotation
   sh.moveTo(-700, -zA); sh.lineTo(700, -zA); sh.lineTo(700, -zB); sh.lineTo(-700, -zB); sh.closePath();
   for (const o of course) {
     if ((o.kind !== 'pillar' && o.kind !== 'tower') || o.z > zA || o.z < zB || !WIDE.has(secAtT(tAtZ(o.z)).lv)) continue;
@@ -1000,11 +1137,248 @@ function buildArcFloor() {
   }
   arcFloor.geometry.dispose(); arcFloor.geometry = new THREE.ShapeGeometry(sh); arcFloor.userData.gen = courseGen;
 }
+// ---------- L7 core towers (image 2): greebled steel drum, radial greeble top full of lit chips, falling away into deep space ----------
+const CR = 20, corePool = [];
+const coreSlabMat = new THREE.MeshStandardMaterial({ color: 0x46536c, vertexColors: true, roughness: .42, metalness: .6 });
+const coreChipMat = emissiveBasic(0xbfeaff, 1.4), coreTopMat = new THREE.MeshStandardMaterial({ color: 0xb8c4d8, roughness: .4, metalness: .55 });
+function buildCoreTower() {
+  const g = new THREE.Group(), r = rng32(7000 + towerSeed++ * 13);
+  const skin = hudSkin || (hudSkin = buildColumn(true, HR, 2020)), n = 16;   // ~130 deep: the drums sink into the mist
+  const ib = new THREE.InstancedMesh(skin.body, coreSlabMat, n), igl = skin.glow ? new THREE.InstancedMesh(skin.glow, coreChipMat, n) : null;
+  for (let i = 0; i < n; i++) {   // wall: stacked sections hanging down from the top (y = 0)
+    dummy.position.set(0, -(i + 1) * SEC - .4, 0); dummy.rotation.set(0, r() * 6.28, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+    ib.setMatrixAt(i, dummy.matrix); if (igl) igl.setMatrixAt(i, dummy.matrix);
+  }
+  ib.frustumCulled = false; g.add(ib); if (igl) { igl.frustumCulled = false; g.add(igl); }
+  const items = []; let rr = 1.6;   // top: concentric rings of blocks, dipping toward the eye, tall slabs round the rim
+  while (rr < CR - .2) {
+    const r1 = Math.min(rr + .5 + r() * .7, CR), rm = (rr + r1) / 2, nn = Math.max(8, Math.floor(2 * Math.PI * rm / (.55 + r() * .8))), a0 = r() * 6.28, u = rm / CR;
+    const base = -1.6 * Math.pow(1 - u, 1.6) + (u > .9 ? .5 : 0);
+    for (let i = 0; i < nn; i++) { if (r() < .06) continue; items.push([rm, a0 + i / nn * Math.PI * 2, base + (r() < .25 ? r() * (u > .9 ? 1.6 : .7) : 0), r1 - rr - .06, 2 * Math.PI * rm / nn * .88, r() < .07 + .1 * u]); }
+    rr = r1;
+  }
+  const im = new THREE.InstancedMesh(boxGeo, coreTopMat, items.length), ig = new THREE.InstancedMesh(boxGeo, glowMat, items.length);
+  items.forEach(([rm, a, top, dr, w, glow], i) => {
+    const h = .8 + r() * .8;
+    dummy.position.set(rm * Math.cos(a), top - h, rm * Math.sin(a)); dummy.rotation.set(0, -a, 0); dummy.scale.set(dr, h, w); dummy.updateMatrix();
+    if (glow) { ig.setMatrixAt(i, dummy.matrix); im.setMatrixAt(i, ZERO); ig.setColorAt(i, tmpC.set(r() < .3 ? 0xffffff : 0xa8e4ff).multiplyScalar(.7 + r() * .9)); }
+    else { ig.setMatrixAt(i, ZERO); im.setMatrixAt(i, dummy.matrix); im.setColorAt(i, tmpC.setHSL(.6 + r() * .03, .18, .14 + r() * .2)); }
+  });
+  if (!ig.instanceColor) ig.setColorAt(0, tmpC.set(0));
+  im.frustumCulled = ig.frustumCulled = false; g.add(im, ig);
+  const eye = new THREE.Mesh(new THREE.CircleGeometry(1.7, 40), new THREE.MeshBasicMaterial({ color: 0x02040a })); eye.rotation.x = -Math.PI / 2; eye.position.y = -1.5; g.add(eye);
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(CR - .05, .12, 6, 120), emissiveBasic(0x9fdcff, .55)); lip.rotation.x = Math.PI / 2; lip.position.y = .1; g.add(lip);
+  return g;
+}
+// light burst: warning rings on the core's eye, then a column of white-cyan light up past the camera
+const burstRingGeo = new THREE.RingGeometry(.92, 1, 64, 1).rotateX(-Math.PI / 2), burstBeamGeo = new THREE.CylinderGeometry(1, 1, 1, 40, 1, true).translate(0, .5, 0);
+const burstDiscGeo = new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2);
+function makeBurst(o) {
+  const g = new THREE.Group(), warn = additive(0x8fe0ff, 2.2, 0), warn2 = additive(0xffffff, 2, 0), beamM = additive(0xbfeeff, 1.6, 0), coreM = additive(0xffffff, 3, 0);
+  const r1 = new THREE.Mesh(burstRingGeo, warn); r1.scale.setScalar(o.R); r1.position.y = .2;
+  const r2 = new THREE.Mesh(burstRingGeo, warn2); r2.scale.setScalar(o.R); r2.position.y = .25;
+  const BH = ALT - o.top + 8, beam = new THREE.Mesh(burstBeamGeo, beamM); beam.scale.set(o.R, BH, o.R);
+  const halo = new THREE.Mesh(burstBeamGeo, additive(0x7fd0ff, 1, 0)); halo.scale.set(o.R * 1.6, BH, o.R * 1.6);
+  const disc = new THREE.Mesh(burstDiscGeo, coreM); disc.scale.setScalar(o.R); disc.position.y = ALT - o.top + 8;
+  g.add(r1, r2, beam, halo, disc); g.userData = { BH, r1, r2, beam, halo, disc, mats: [warn, warn2, beamM, halo.material, coreM] };
+  return g;
+}
+// top-down laser wall: beam across the lane with a gap; the group sits on the gap centre
+function makeTdWall(o) {
+  const g = new THREE.Group(), W = 70;
+  for (const s of [-1, 1]) {
+    const len = W - o.gw, cx = s * (o.gw + len / 2);
+    const c = new THREE.Mesh(boxC, laserCoreMat); c.scale.set(len, .22, .22); c.position.x = cx;
+    const h = new THREE.Mesh(boxC, laserHaloMat); h.scale.set(len, .9, .9); h.position.x = cx;
+    const cap = new THREE.Mesh(boxC, emissiveBasic(GOLD, 3)); cap.scale.set(.5, .5, .9); cap.position.x = s * o.gw;
+    g.add(c, h, cap);
+  }
+  return g;
+}
+
+// ---------- L8 GLASS SPIRES (image 3): stained-glass light structures, mirror plain, dusk sky ----------
+function glassTex(seed) {   // stained glass: swept bands edged with dark leading, cut into panes by cross leads, each pane shaded, sparkle chips
+  const W = 768, H = 1536, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'), r = rng32(seed), COLS = ['#ff2fa0', '#e8145a', '#ffcc1a', '#ffe070', '#ffd23a', '#ffffff', '#ff6a1a', '#c0102a', '#ff7ad0', '#2a0a20', '#3a0820', '#ffb04a'];
+  g.fillStyle = '#ffd890'; g.fillRect(0, 0, W, H); g.lineCap = 'butt';
+  const curve = (x0, y0, cx, cy, x1, y1) => { for (const dx of [-W, 0, W]) { g.beginPath(); g.moveTo(x0 + dx, y0); g.quadraticCurveTo(cx + dx, cy, x1 + dx, y1); g.stroke(); } };   // wraps round the seam
+  for (let i = 0; i < 46; i++) {   // swept bands (big first, finer on top)
+    const big = i < 16, w = big ? 70 + r() * 160 : 18 + r() * 60, x0 = r() * W * 1.4 - W * .2, y0 = H + 40, x1 = x0 + (r() - .5) * W * 1.6, y1 = -40 - r() * 260;
+    const cx = (x0 + x1) / 2 + (r() - .5) * W * 1.2, cy = H * (.15 + r() * .7), col = COLS[Math.floor(r() * COLS.length)];
+    g.strokeStyle = '#160610'; g.lineWidth = w + (big ? 14 : 8); curve(x0, y0, cx, cy, x1, y1);
+    g.strokeStyle = col; g.lineWidth = w; curve(x0, y0, cx, cy, x1, y1);
+    g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = Math.max(2, w * .18); curve(x0 - w * .2, y0, cx - w * .2, cy, x1 - w * .2, y1);   // bright streak inside the band
+  }
+  g.strokeStyle = '#160610';   // cross leads: gentle arcs across the bands make panes
+  for (let y = 40 + r() * 40; y < H; y += 46 + r() * 90) { g.lineWidth = 3 + r() * 4; const sag = (r() - .5) * 120, tilt = (r() - .5) * 160; g.beginPath(); g.moveTo(-10, y); g.quadraticCurveTo(W / 2, y + sag, W + 10, y + tilt); g.stroke(); }
+  for (let i = 0; i < 260; i++) {   // pane shading: soft light / dark patches so no two panes match
+    const x = r() * W, y = r() * H, rad = 20 + r() * 70, gr = g.createRadialGradient(x, y, 0, x, y, rad), lit = r() < .5;
+    gr.addColorStop(0, lit ? 'rgba(255,255,255,.22)' : 'rgba(40,0,20,.28)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  g.fillStyle = '#ffffff'; for (let i = 0; i < 500; i++) { const sz = 1 + r() * 3; g.globalAlpha = .4 + r() * .6; g.fillRect(r() * W, r() * H, sz, sz); } g.globalAlpha = 1;   // sparkle chips
+  for (let i = 0; i < 8; i++) { const x = r() * W; g.fillStyle = 'rgba(22,6,16,.9)'; g.fillRect(x, 0, 3, H); }   // vertical ribs
+  const grd = g.createLinearGradient(0, 0, 0, H); grd.addColorStop(0, 'rgba(255,255,255,.55)'); grd.addColorStop(.3, 'rgba(255,255,255,0)'); g.fillStyle = grd; g.fillRect(0, 0, W, H);   // tips burn white
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; return t;
+}
+function spireGeo(seed) {   // unit spire: curved flame-like blade, base radius 1 at y = 0, tip at y = 1
+  const r = rng32(seed), bend = (r() - .5) * 1.6, twist = (r() - .5) * 1.4, sq = .55 + r() * .35, bulge = .1 + r() * .3;
+  const geo = new THREE.CylinderGeometry(1, 1, 1, 40, 48, true); geo.translate(0, .5, 0);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i), a = Math.atan2(p.getZ(i), p.getX(i)) + twist * y, rad = Math.pow(1 - y, .85) * (1 + bulge * Math.sin(Math.PI * y));
+    p.setXYZ(i, Math.cos(a) * rad + bend * y * y, y, Math.sin(a) * rad * sq);
+  }
+  geo.computeVertexNormals(); return geo;
+}
+const SPIRE_GEOS = Array.from({ length: 6 }, (_, i) => spireGeo(300 + i * 7)), GLASS_TEX = [glassTex(41), glassTex(42), glassTex(43)];
+const spireMat = tex => new THREE.ShaderMaterial({   // glowing glass: texture lit from inside, bright fresnel rim
+  uniforms: { map: { value: tex }, k: { value: .95 } }, side: THREE.DoubleSide, fog: false, transparent: true, depthWrite: true,
+  vertexShader: 'varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main() { vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = -mv.xyz; gl_Position = projectionMatrix * mv; }',
+  fragmentShader: 'uniform sampler2D map; uniform float k; varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main() { vec3 c = texture2D(map, vUv).rgb; float f = 1.0 - abs(dot(normalize(vN), normalize(vV))); vec3 col = c * k * (0.75 + 0.6 * f) + vec3(1.0, 0.9, 0.95) * pow(f, 3.0) * 1.6 + c * smoothstep(0.75, 1.0, vUv.y) * 0.8; gl_FragColor = vec4(col, 0.94); }' });
+const SPIRE_MATS = GLASS_TEX.map(t => spireMat(t));
+function spireCluster(seed, H, W) {   // a main blade with 1-3 smaller blades leaning on it (like the reference: groups of curved glass sails)
+  const r = rng32(seed), g = new THREE.Group(), n = 1 + Math.floor(r() * 3);
+  const main = new THREE.Mesh(SPIRE_GEOS[seed % 6], SPIRE_MATS[seed % 3]); main.scale.set(W, H, W); main.rotation.y = r() * 6.28; g.add(main);
+  for (let k = 0; k < n; k++) {
+    const a = r() * 6.28, d = W * (.5 + r() * .5), m = new THREE.Mesh(SPIRE_GEOS[(seed + k + 1) % 6], SPIRE_MATS[(seed + k + 1) % 3]);
+    const hk = H * (.35 + r() * .4), wk = W * (.45 + r() * .3); m.scale.set(wk, hk, wk); m.position.set(Math.cos(a) * d, 0, Math.sin(a) * d); m.rotation.y = r() * 6.28; g.add(m);
+  }
+  return g;
+}
+const shardMats = GLASS_TEX.map(t => new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(.95, .9, .92), side: THREE.DoubleSide }));
+const shardHalfAt = (o, y) => o.w * Math.pow(Math.max(0, 1 - y / o.h), .85) * 1.15;   // shard radius at a height (for hits)
+function makeShard(o) {
+  const m = new THREE.Mesh(SPIRE_GEOS[o.v], shardMats[o.v % 3]); m.scale.set(o.w, o.h, o.w);
+  const g = new THREE.Group(); g.add(m);
+  const foot = new THREE.Mesh(new THREE.RingGeometry(o.w * 1.05, o.w * 1.25, 40).rotateX(-Math.PI / 2), additive(0xffc0e0, 1.6, .7)); foot.position.y = .05; g.add(foot);
+  return g;
+}
+// the dusk backdrop: follows the camera across the plain so the spires stay on the horizon
+const prismSky = new THREE.Group(); prismSky.visible = false; scene.add(prismSky);
+{
+  const SUN_DIR = new THREE.Vector3(-.28, .42, -1).normalize();
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(3400, 48, 24), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false, uniforms: { sun: { value: SUN_DIR } },
+    vertexShader: 'varying vec3 vD; void main() { vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform vec3 sun; varying vec3 vD;
+      void main() { float h = vD.y;
+        vec3 top = vec3(.03, .006, .035), mid = vec3(.2, .025, .09), low = vec3(.32, .08, .07), hz = vec3(.5, .24, .2);
+        vec3 c = mix(low, mid, smoothstep(.0, .16, h)); c = mix(c, top, smoothstep(.14, .6, h)); c = mix(hz, c, smoothstep(-.01, .04, h));
+        float s = max(0., dot(vD, sun)); c += vec3(1., .45, .3) * pow(s, 8.) * .45 + vec3(1., .85, .7) * pow(s, 80.) * 1.2;
+        c += vec3(.9, .1, .35) * pow(max(0., 1. - abs(vD.x)), 3.) * smoothstep(.35, .05, h) * .12;
+        gl_FragColor = vec4(c, 1.0); }` }));
+  sky.renderOrder = -11; prismSky.add(sky);
+  const glowTex = (inner, outer) => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'), gr = g.createRadialGradient(128, 128, 0, 128, 128, 128); gr.addColorStop(0, inner); gr.addColorStop(.22, inner); gr.addColorStop(.3, outer); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); return new THREE.CanvasTexture(c); };
+  const disc = (dir, size, inner, outer, k = 1) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: glowTex(inner, outer), color: new THREE.Color(k, k, k), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); m.position.copy(dir).multiplyScalar(3000); m.lookAt(0, 0, 0); m.renderOrder = -10; prismSky.add(m); };
+  disc(SUN_DIR, 900, 'rgba(255,250,235,1)', 'rgba(255,190,140,.35)', 2.2);                                   // the sun
+  disc(new THREE.Vector3(.3, .36, -1).normalize(), 260, 'rgba(255,60,60,1)', 'rgba(255,40,60,.25)', 1.8);      // red moon
+  disc(new THREE.Vector3(-.62, .24, -1).normalize(), 300, 'rgba(240,235,245,1)', 'rgba(220,200,255,.12)', 1.2); // pale moon
+  { // clouds: soft blotches, dark violet with warm undersides
+    const c = document.createElement('canvas'); c.width = 512; c.height = 256; const g = c.getContext('2d'), r = rng32(81);
+    for (let i = 0; i < 90; i++) { const x = 40 + r() * 432, y = 70 + r() * 120, rad = 20 + r() * 60, gr = g.createRadialGradient(x, y, 0, x, y, rad); const warm = y > 150; gr.addColorStop(0, warm ? 'rgba(255,120,110,.35)' : 'rgba(70,20,60,.45)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 512, 256); }
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; const rc = rng32(82);
+    for (let i = 0; i < 14; i++) {
+      const az = (rc() - .5) * 2.6 - Math.PI / 2, el = .12 + rc() * .45, d = new THREE.Vector3(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el));
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(1400 + rc() * 1200, 500 + rc() * 300), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: .9 }));
+      m.position.copy(d).multiplyScalar(2900); m.lookAt(0, m.position.y * .6, 0); m.renderOrder = -10; prismSky.add(m);
+    }
+  }
+  { // mountains: jagged dark ridges left and right of the spires, pale mist at their feet
+    const r = rng32(91);
+    for (const side of [-1, 1]) {
+      const sh = new THREE.Shape(); sh.moveTo(0, -5); let x = 0;
+      while (x < 1400) { x += 30 + r() * 70; sh.lineTo(x, 40 + r() * 140 * (1 - Math.abs(x - 500) / 1400)); }
+      sh.lineTo(x, -5); sh.closePath();
+      const m = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ color: 0x3a1a34, fog: false }));
+      m.position.set(side > 0 ? 700 : -2100, 0, -2600); prismSky.add(m);
+    }
+    const c = document.createElement('canvas'); c.width = 4; c.height = 64; const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 64); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(255,220,235,1)'); g.fillStyle = gr; g.fillRect(0, 0, 4, 64);
+    const mist = new THREE.Mesh(new THREE.PlaneGeometry(5600, 140), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, opacity: .3, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    mist.position.set(0, 70, -1900); prismSky.add(mist);
+  }
+  { // the glass spires on the horizon, a line of lights at their feet
+    const r = rng32(17), xs = [-720, -520, -330, -170, 0, 170, 340, 520, 720];
+    xs.forEach((x0, i) => {
+      const H = 360 + r() * 340 + (i === 4 ? 120 : 0), W = 55 + r() * 45 + H * .04, m = spireCluster(i * 5 + 1, H, W);
+      m.position.set(x0 + (r() - .5) * 60, 0, -1650 - r() * 260); prismSky.add(m);
+    });
+    for (let i = 0; i < 14; i++) {   // a farther row between and behind them, for depth
+      const H = 200 + r() * 300, W = 40 + r() * 40, m = spireCluster(100 + i * 3, H, W);
+      m.position.set(-1300 + i * 200 + (r() - .5) * 90, 0, -2150 - r() * 250); prismSky.add(m);
+    }
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(2400, 3), emissiveBasic(0xfff0f6, 3, { fog: false })); line.position.set(0, 1.5, -1650); prismSky.add(line);
+    const lamps = new THREE.InstancedMesh(new THREE.SphereGeometry(2.4, 8, 6), emissiveBasic(0xffffff, 4, { fog: false }), 40);
+    for (let i = 0; i < 40; i++) { dummy.position.set(-1200 + i * 60 + (r() - .5) * 20, 2, -1640 + (r() - .5) * 40); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(.6 + r()); dummy.updateMatrix(); lamps.setMatrixAt(i, dummy.matrix); }
+    prismSky.add(lamps);
+  }
+}
+// side spires: glass clusters along both sides of the lane, recycled ahead as you pass them (level 8 only)
+const sideSpires = new THREE.Group(); sideSpires.visible = false; scene.add(sideSpires);
+{
+  const r = rng32(808);
+  for (let i = 0; i < 26; i++) {
+    const H = 70 + Math.pow(r(), 1.5) * 300, W = 10 + r() * 14 + H * .05, m = spireCluster(200 + i * 7, H, W);
+    m.userData = { side: i % 2 ? 1 : -1, H, W }; sideSpires.add(m);
+  }
+}
+let sideAt = null;
+function placeSide(m, z) { const u = m.userData, near = Math.random() < .45; m.position.set(u.side * (LANE + 60 + u.W * 1.6 + u.H * .12 + (near ? Math.random() * 80 : 80 + Math.random() * 480)), 0, z); }   // bigger ones stand further out
+function updateSideSpires(cz) {
+  if (sideAt == null || Math.abs(cz - sideAt) > 300) sideSpires.children.forEach(m => placeSide(m, cz + 60 - Math.random() * 1500));   // jump / start: spread them all ahead
+  else sideSpires.children.forEach(m => { if (m.position.z > cz + 80) placeSide(m, cz - 1100 - Math.random() * 400); });
+  sideAt = cz;
+}
+// mirror plain: a reflector, darkened, broken up by cracks, reflections smeared down a little like wet glass
+const crackTex = (() => {
+  const W = 1024, c = document.createElement('canvas'); c.width = c.height = W; const g = c.getContext('2d'), r = rng32(23);
+  g.fillStyle = '#000'; g.fillRect(0, 0, W, W);
+  g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineCap = 'round';
+  for (let i = 0; i < 60; i++) {   // wandering crack lines, branching
+    let x = r() * W, y = r() * W, a = r() * 6.28; g.lineWidth = .8 + r() * 2.2; g.beginPath(); g.moveTo(x, y);
+    for (let k = 0; k < 40; k++) { a += (r() - .5) * .9; x += Math.cos(a) * 14; y += Math.sin(a) * 14; g.lineTo(x, y); }
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+})();
+const MIRROR_SHADER = {
+  uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null }, crack: { value: null }, hz: { value: new THREE.Color(0x6a2a40) } },
+  vertexShader: 'uniform mat4 textureMatrix; varying vec4 vUv; varying vec3 vW; void main() { vUv = textureMatrix * vec4(position, 1.0); vW = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D crack; uniform vec3 hz; varying vec4 vUv; varying vec3 vW;
+    void main() {
+      float ck = texture2D(crack, vW.xz * .011).r, ck2 = texture2D(crack, vW.xz * .0031 + .37).r;
+      float dist = length(vW.xz - cameraPosition.xz);
+      vec4 q = vUv; vec3 refl = vec3(0.);
+      for (int i = 0; i < 6; i++) { vec4 s = q; s.y += (float(i) - 1.5) * .0045 * q.w; s.x += (ck2 - .5) * .006 * q.w; refl += texture2DProj(tDiffuse, s).rgb; }
+      refl /= 6.;
+      float fres = .2 + .45 * smoothstep(15., 600., dist);
+      vec3 col = vec3(.01, .006, .012) + refl * fres * (1. - ck * .7) + vec3(.06, .03, .05) * ck2;
+      col = mix(col, hz * .55 + refl * .4, smoothstep(700., 1700., dist));
+      gl_FragColor = vec4(col, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }` };
+const mirror = new Reflector(new THREE.PlaneGeometry(4200, 4200), { textureWidth: 1024, textureHeight: 1024, clipBias: .003, shader: MIRROR_SHADER });
+mirror.material.uniforms.crack.value = crackTex; mirror.rotation.x = -Math.PI / 2; mirror.visible = false; scene.add(mirror);
+// L7 depth mist: stacked layers of soft glowing blue haze between the core towers, drifting slowly; follows the camera
+const coreMist = new THREE.Group(); coreMist.visible = false; scene.add(coreMist);
+{
+  const W = 512, c = document.createElement('canvas'); c.width = c.height = W; const g = c.getContext('2d'), r = rng32(64);
+  for (let i = 0; i < 220; i++) {   // tileable blotches (drawn wrapped)
+    const x = r() * W, y = r() * W, rad = 30 + r() * 110, a = .05 + r() * .12;
+    for (const dx of [-W, 0, W]) for (const dy of [-W, 0, W]) { const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, rad); gr.addColorStop(0, `rgba(255,255,255,${a})`); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x + dx - rad, y + dy - rad, rad * 2, rad * 2); }
+  }
+  const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  Array.from({ length: 9 }, (_, i) => [-26 - i * 12, i < 4 ? 0x2a6cff : 0x4a9cff, .025 + i * .009, 3 - i * .18]).forEach(([y, col, k, rep], i) => {
+    const t = tex.clone(); t.needsUpdate = true; t.repeat.set(rep, rep); t.offset.set(i * .31, i * .17);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(col).multiplyScalar(k), transparent: true, opacity: .9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    m.rotation.x = -Math.PI / 2; m.position.y = y; m.userData.drift = [(i % 2 ? 1 : -1) * .004 * (i + 1), .006 + i * .002]; coreMist.add(m);
+  });
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshBasicMaterial({ color: 0x061a3c, fog: false })); glow.rotation.x = -Math.PI / 2; glow.position.y = -140; coreMist.add(glow);   // lit floor of the haze
+}
 const twinkleTime = { value: 0 };
 function skyFade(dt, pal, inTunnel) {   // stars only over Arc Garden and The Sphere (plus the lower field on The Sphere); elsewhere black sky with the bottom haze
   twinkleTime.value += dt;
-  const a = stars.userData.amt, k = 1 - Math.exp(-dt * 1.5), on = !inTunnel && (pal === 'arc' || pal === 'sphere');
-  a.all = lerp(a.all, on ? 1 : 0, k); a.sphere = lerp(a.sphere, on && pal === 'sphere' ? 1 : 0, k);
+  const a = stars.userData.amt, k = 1 - Math.exp(-dt * 1.5), on = !inTunnel && (pal === 'arc' || pal === 'sphere' || pal === 'cores');
+  a.all = lerp(a.all, on ? 1 : 0, k); a.sphere = lerp(a.sphere, on && (pal === 'sphere' || pal === 'cores') ? 1 : 0, k);
   stars.visible = a.all > .003;
   stars.children.forEach(o => { if (o.isPoints) o.material.opacity = o.userData.op * a.all; });
   const lo = stars.userData.below; lo.visible = a.sphere > .003; lo.children.forEach(o => o.material.opacity = o.userData.op * a.sphere);
@@ -1097,18 +1471,31 @@ function makeGate(hex) {
   return g;
 }
 const shockGeo = new THREE.RingGeometry(RING_R * .97, RING_R * 1.03, 96, 1);
-function burstGate(o) {   // fly-by pass: the ring dissolves outward as light - frame swells, ticks fly off, a soft shockwave spreads
-  tintGate(o, 0xffffff, 3.2); o.burst = 0;
-  const g = o.mesh, shock = new THREE.Mesh(shockGeo, additive(PAL[secAtT(o.t).pal].gate, 1.3, .6)); g.add(shock);
+const sparkGeo = new THREE.BoxGeometry(.5, .14, .14), flashGeo = new THREE.CircleGeometry(RING_R, 48);
+function burstGate(o, col, big = false) {   // the ring dissolves outward as light - frame swells, ticks fly off, a soft shockwave spreads
+  tintGate(o, col ?? 0xffffff, big ? 4 : 3.2); o.burst = 0; o.big = big;   // big: collected from above - flash, double shockwave, sparks
+  const g = o.mesh, shock = new THREE.Mesh(shockGeo, additive(big ? col : PAL[secAtT(o.t).pal].gate, big ? 2.2 : 1.3, big ? .9 : .6)); g.add(shock);
   g.userData.mats.push(shock.material); g.userData.shock = shock;
   g.children.forEach(c => { c.userData.p0 = c.position.clone(); });
+  if (!big) return;
+  const shock2 = new THREE.Mesh(shockGeo, additive(0xffffff, 2, .8)); g.add(shock2); g.userData.shock2 = shock2; g.userData.mats.push(shock2.material);
+  const flash = new THREE.Mesh(flashGeo, additive(col, 2.5, .9)); g.add(flash); g.userData.flash = flash; g.userData.mats.push(flash.material);
+  const sp = new THREE.Group(), sm = additive(col, 3.2, 1); g.userData.mats.push(sm);
+  for (let i = 0; i < 26; i++) {
+    const a = i / 26 * Math.PI * 2 + Math.random() * .2, m = new THREE.Mesh(sparkGeo, sm);
+    m.rotation.z = a; m.userData = { a, v: 7 + Math.random() * 9, s: .7 + Math.random() * 1.1 }; m.position.set(Math.cos(a) * RING_R, Math.sin(a) * RING_R, 0); sp.add(m);
+  }
+  g.add(sp); g.userData.sparks = sp;
 }
 function animBurst(o, dt) {
-  o.burst += dt; const f = Math.min(1, o.burst / .9), e = 1 - Math.pow(1 - f, 3), fade = Math.pow(1 - f, 1.6), g = o.mesh, [m1, m2] = g.userData.mats;
+  o.burst += dt; const f = Math.min(1, o.burst / (o.big ? 1.1 : .9)), e = 1 - Math.pow(1 - f, 3), fade = Math.pow(1 - f, 1.6), g = o.mesh, u = g.userData, [m1, m2] = u.mats;
   g.children.forEach((c, i) => {
-    if (c === g.userData.shock) { c.scale.setScalar(1 + e * 3.2); c.material.opacity = .6 * Math.pow(1 - f, 2.2); }
-    else if (i === 0) c.scale.setScalar(1 + e * 1.1);
-    else if (i === 1) c.scale.setScalar(1 + e * .5);
+    if (c === u.shock) { c.scale.setScalar(1 + e * (o.big ? 6 : 3.2)); c.material.opacity = (o.big ? .9 : .6) * Math.pow(1 - f, 2.2); }
+    else if (c === u.shock2) { const k = Math.min(1, o.burst / .35), ek = 1 - Math.pow(1 - k, 2); c.scale.setScalar(1 + ek * 2.4); c.material.opacity = .8 * Math.pow(1 - k, 1.5); }
+    else if (c === u.flash) { const k = Math.min(1, o.burst / .25); c.scale.setScalar(1 + k * .9); c.material.opacity = .9 * Math.pow(1 - k, 2); }
+    else if (c === u.sparks) c.children.forEach(m => { const d = m.userData, r = RING_R + d.v * e * 1.6; m.position.set(Math.cos(d.a) * r, Math.sin(d.a) * r, 0); m.scale.set(d.s * (1 + (1 - f) * 2), 1 - f * .7, 1 - f * .7); m.material.opacity = Math.pow(1 - f, 1.3); })
+    else if (i === 0) c.scale.setScalar(1 + e * (o.big ? 1.8 : 1.1));
+    else if (i === 1) c.scale.setScalar(1 + e * (o.big ? 1 : .5));
     else { c.position.copy(c.userData.p0).multiplyScalar(1 + e * 2.4); c.rotation.z += dt * 3; }
   });
   m1.opacity = fade; m2.opacity = .6 * Math.pow(1 - f, 2.5);
@@ -1197,6 +1584,18 @@ function loadShip() {
   const arc = new THREE.Mesh(new THREE.TorusGeometry(.95, .05, 8, 40, Math.PI), strip); arc.scale.set(1.25, .55, 1); arc.position.set(0, 0, 2.05); craft.add(arc);
   craft.scale.setScalar(.85);
 }
+// top-down only: a dark halo under the craft and corner brackets round it, so it reads against busy floors
+const tdMark = new THREE.Group(); scene.add(tdMark);
+{
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 10, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(0,0,0,.85)'); gr.addColorStop(.6, 'rgba(0,0,0,.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  const sh = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false })); sh.rotation.x = -Math.PI / 2; sh.position.y = -1.2; tdMark.add(sh);
+  const bm = additive(0xffffff, 1.6, .9);
+  for (let i = 0; i < 4; i++) for (const [w, d, dx, dz] of [[1.1, .12, .5, 0], [.12, 1.1, 0, .5]]) {
+    const sx = i & 1 ? 1 : -1, sz = i & 2 ? 1 : -1, b = new THREE.Mesh(boxC, bm); b.scale.set(w, .05, d); b.position.set(sx * (3 - dx), .3, sz * (3.4 - dz)); tdMark.add(b);
+  }
+  tdMark.userData = { sh, bm };
+}
 underLight = new THREE.PointLight(0xff3344, 90, 22, 2); underLight.position.set(0, -1.2, .5); craft.add(underLight);
 loadShip();
 
@@ -1277,7 +1676,7 @@ const beams = new THREE.Group(); scene.add(beams);
 let spawnIdx = 0; const live = [];
 function spawn(o) {
   let m;
-  if (o.kind === 'gate') { m = makeGate(PAL[secAtT(o.t).pal].gate); m.position.set(o.x, o.y, o.z); }
+  if (o.kind === 'gate') { m = makeGate(PAL[secAtT(o.t).pal].gate); if (o.td) { m.position.set(o.x, ALT, o.z); m.rotation.x = -Math.PI / 2; } else m.position.set(o.x, o.y, o.z); }
   else if (o.kind === 'pillar') {
     m = columnMesh(false, o.w, o.h + 60, o.pal, Math.round(o.z * 13));
     m.position.set(o.x, -60, o.z); holeFrame(o, m);
@@ -1290,27 +1689,38 @@ function spawn(o) {
     for (const s of [-1, 1]) { const p = new THREE.Mesh(boxGeo, postMat); p.scale.set(.6, o.y + 1.2, .6); p.position.set(s * (LANE + .3), -o.y, 0); m.add(p); }
     m.position.set(0, o.y, o.z);
   } else if (o.kind === 'hud') {
-    m = towerPool[o.col].pop() || buildHudTower(o.col);
+    const tw = towerPool[o.col].pop() || buildHudTower(o.col);
+    if (o.lift) {   // pedestal: the same greeble skin, stretched under the drum
+      m = new THREE.Group(); tw.position.y = o.lift; m.add(tw); m.userData = tw.userData; o.tower = tw;
+      const sk = hudSkin, sy = (o.lift + .2) / SEC;
+      const ped = new THREE.Mesh(sk.body, hudSlabMats[o.col]); ped.scale.set(.97, sy, .97); m.add(ped);
+      if (sk.glow) { const pg = new THREE.Mesh(sk.glow, hudChipMats[o.col]); pg.scale.set(.97, sy, .97); m.add(pg); }
+    } else { m = tw; tw.position.y = 0; }
     m.scale.set(o.R / HR, 1, o.R / HR); m.position.set(o.x, 0, o.z);
   } else if (o.kind === 'sweep') {
     m = new THREE.Group();
-    const mast = new THREE.Mesh(cylGeo, metalMat); mast.scale.set(.35, o.h - HH, .35); mast.position.y = HH; m.add(mast);
+    const base = o.base ?? HH, mast = new THREE.Mesh(cylGeo, metalMat); mast.scale.set(.35, o.h - base, .35); mast.position.y = base; m.add(mast);
     const arm = new THREE.Group(); arm.position.y = o.h;
-    const core = new THREE.Mesh(boxC, armMats[o.col]); core.scale.set(o.R * 2, .2, .2);
-    const halo = new THREE.Mesh(boxC, armHalo[o.col]); halo.scale.set(o.R * 2, .85, .85);
-    const tipA = new THREE.Mesh(boxC, armMats[o.col]); tipA.scale.set(1.2, .5, .5); tipA.position.x = o.R;
-    const tipB = tipA.clone(); tipB.position.x = -o.R;
-    arm.add(core, halo, tipA, tipB); m.add(arm); m.userData.arm = arm;
+    for (let k = 0; k < (o.n || 1); k++) {   // n bars through the hub (top-down levels can carry a cross)
+      const bar = new THREE.Group(); bar.rotation.y = k * Math.PI / (o.n || 1);
+      const core = new THREE.Mesh(boxC, armMats[o.col]); core.scale.set(o.R * 2, .2, .2);
+      const halo = new THREE.Mesh(boxC, armHalo[o.col]); halo.scale.set(o.R * 2, .85, .85);
+      const tipA = new THREE.Mesh(boxC, armMats[o.col]); tipA.scale.set(1.2, .5, .5); tipA.position.x = o.R;
+      const tipB = tipA.clone(); tipB.position.x = -o.R;
+      bar.add(core, halo, tipA, tipB); arm.add(bar);
+    }
+    if (o.n) { const hub = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, .5, 24), armMats[o.col]); arm.add(hub); }
+    m.add(arm); m.userData.arm = arm;
     m.position.set(o.x, 0, o.z);
   } else if (o.kind === 'spin') {
     m = new THREE.Group(); const arm = new THREE.Group(); m.add(arm);
-    const len = TUN_R - 3;
+    const hub = o.hub || 3, len = TUN_R - hub;
     for (let p = 0; p < o.n; p++) for (const s of [-1, 1]) {
-      const a = p * Math.PI / o.n, d = s * (3 + len / 2);
+      const a = p * Math.PI / o.n, d = s * (hub + len / 2);
       const c = new THREE.Mesh(boxC, laserCoreMat); c.scale.set(len, .22, .22); c.position.set(Math.cos(a) * d, Math.sin(a) * d, 0); c.rotation.z = a;
       const h = new THREE.Mesh(boxC, laserHaloMat); h.scale.set(len, .8, .8); h.position.copy(c.position); h.rotation.z = a; arm.add(c, h);
     }
-    const hub = new THREE.Mesh(new THREE.TorusGeometry(3, .06, 6, 48), laserCoreMat); m.add(hub);
+    m.add(new THREE.Mesh(new THREE.TorusGeometry(hub, .06, 6, 48), laserCoreMat));
     m.userData.arm = arm; m.position.set(0, TCY, o.z);
   } else if (o.kind === 'portal') {
     m = new THREE.Group();
@@ -1330,6 +1740,11 @@ function spawn(o) {
     if (o.hh < 99) { beam(LANE * 2 + 4, 0, o.hh, false); beam(LANE * 2 + 4, 0, -o.hh, false); }
     if (o.hw < 99) { beam(40, o.hw, 0, true); beam(40, -o.hw, 0, true); }
     m.position.set(o.qx, o.qy, o.z);
+  } else if (o.kind === 'core') {
+    m = corePool.pop() || buildCoreTower(); m.scale.set(o.R / CR, 1, o.R / CR); m.position.set(o.x, o.top, o.z);
+  } else if (o.kind === 'burst') { m = makeBurst(o); m.position.set(o.x, o.top, o.z);
+  } else if (o.kind === 'tdwall') { m = makeTdWall(o); m.position.set(o.qx, ALT, o.z);
+  } else if (o.kind === 'shard') { m = makeShard(o); m.position.set(o.x, 0, o.z);
   } else if (o.kind === 'arc') { m = makeArc(o); m.position.set(o.x, 0, o.z);
   } else if (o.kind === 'slab') { m = makeSlab(o); m.position.set(o.x, 0, o.z);
   } else if (o.kind === 'grid') {
@@ -1355,16 +1770,21 @@ function spawn(o) {
     const e2 = new THREE.Mesh(boxC, finEdgeMat); e2.scale.set(6.2, .14, .14); e2.position.set(8.1, w / 2, 1.12); const e3 = e2.clone(); e3.position.y = -w / 2;
     m.add(b, e, e2, e3); m.rotation.z = o.a; m.position.set(0, TCY, o.z);
   }
-  o.mesh = m; o.done = false; o.flash = -1; o.burst = -1; scene.add(m); live.push(o);
+  o.mesh = m; o.done = false; o.flash = -1; o.burst = -1; o.fired = o.near = false; scene.add(m); live.push(o);
 }
 function despawn(o) {
   scene.remove(o.mesh);
-  if (o.kind === 'hud') towerPool[o.col].push(o.mesh);
+  if (o.kind === 'hud') { const tw = o.tower || o.mesh; if (o.tower) o.mesh.remove(tw); tw.position.y = 0; towerPool[o.col].push(tw); o.tower = null; }
   else if (o.kind === 'pillar' || o.kind === 'tower') o.mesh.children.forEach(n => n.isInstancedMesh && n.dispose());
   else if (o.kind === 'portal') { const d = o.mesh.userData.disc; o.mesh.remove(d); portalPool[o.col].push(d); }
   else if (o.kind === 'gate') o.mesh.userData.mats.forEach(m => m.dispose());
   else if (o.kind === 'spin') o.mesh.children[1].geometry.dispose();
   else if (o.kind === 'slab') o.mesh.geometry.dispose();
+  else if (o.kind === 'core') corePool.push(o.mesh);
+  else if (o.kind === 'burst') o.mesh.userData.mats.forEach(m => m.dispose());
+  else if (o.kind === 'tdwall') o.mesh.children.forEach((c, i) => { if (i % 3 === 2) c.material.dispose(); });
+  else if (o.kind === 'shard') { const f = o.mesh.children[1]; f.geometry.dispose(); f.material.dispose(); }
+  else if (o.kind === 'sweep' && o.n) o.mesh.userData.arm.children.at(-1).geometry.dispose();
   else if (o.kind === 'grid') o.mesh.children.forEach((c, i) => { c.geometry.dispose(); if (i === 2) c.material.dispose(); });
   o.mesh = null;
 }
@@ -1505,6 +1925,17 @@ const SFX = {
     if (!this.ok()) return; const t = actx.currentTime;
     noiseHit(t, .05, .25, 'bandpass', 1800, 900, 3, pan); blip('triangle', 900, 2600, t + .01, .16, .1, pan);
   },
+  burst(pan, near, step) {                // core light burst going up: an airy whoosh that swells and rises with the column, a faint in-key shimmer on top
+    if (!this.ok()) return; const t = actx.currentTime, v = .45 + .55 * near, f = noteF(step);
+    for (const [q, f0, f1, vol, dur] of [[1.4, 280, 3200, .34, .75], [.7, 900, 7000, .16, .6]]) {   // two noise layers sweeping up, slow swell in, long tail
+      const src = actx.createBufferSource(), bp = actx.createBiquadFilter(), g = actx.createGain();
+      src.buffer = getNoise(); bp.type = 'bandpass'; bp.Q.value = q;
+      bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + dur * .8);
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol * v, t + dur * .3); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      src.connect(bp).connect(g); panTo(g, pan); src.start(t); src.stop(t + dur + .05);
+    }
+    bell(f * 2, t + .18, .025 * v, .9, pan);
+  },
   level() { if (!this.ok()) return; const t = actx.currentTime; [0, 3, 7, 14].forEach((s, j) => bell(261.63 * Math.pow(2, s / 12), t + j * .09, .12, 1.6)); noiseHit(t, 1.2, .08, 'bandpass', 400, 8000, 1.2); for (let i = 0; i < 8; i++) blip('square', noteF(i), noteF(i), t + .4 + i * .05, .1, .06); },
 };
 
@@ -1567,7 +1998,7 @@ const keys = new Set(); let inputMode = 'mouse', touchId = null, touchLast = nul
 addEventListener('pointermove', e => {
   if (e.pointerType === 'touch') {
     if (e.pointerId !== touchId || !touchLast) return;
-    S.tx += (e.clientX - touchLast.x) / innerWidth * 34; S.ty -= (e.clientY - touchLast.y) / innerHeight * 22;
+    const tk = 1 + (S.tdK || 0) * .7; S.tx += (e.clientX - touchLast.x) / innerWidth * 34 * tk; S.ty -= (e.clientY - touchLast.y) / innerHeight * 22 * tk * 1.3;
     touchLast = { x: e.clientX, y: e.clientY }; inputMode = 'touch'; return;
   }
   inputMode = 'mouse'; mouseN = { x: e.clientX / innerWidth * 2 - 1, y: e.clientY / innerHeight * 2 - 1 };
@@ -1586,7 +2017,7 @@ addEventListener('keydown', e => {
   if ((e.code === 'KeyP' || e.code === 'Escape') && (S.mode === 'play' || S.mode === 'paused')) togglePause();
   if ((e.code === 'KeyR' || e.code === 'Enter') && S.mode === 'over') retryRun();
   if (e.code === 'KeyN' && S.mode === 'over' && !$('nextLoopBtn').hidden) $('nextLoopBtn').click();
-  if (S.mode === 'menu' && ['Digit1', 'Digit2', 'Digit3'].includes(e.code)) selectLevel(+e.code.slice(-1));
+  if (S.mode === 'menu' && /^Digit[1-8]$/.test(e.code)) selectLevel(+e.code.slice(-1));
 });
 addEventListener('keyup', e => { keys.delete(e.code); if (e.code === 'Space') S.boost = false; });
 addEventListener('blur', () => { keys.clear(); S.boost = false; });
@@ -1657,7 +2088,7 @@ function startRun(loopContinue = false, retryLv = 0) {   // retryLv: restart at 
   Object.assign(S, { mode: 'play', t: tStart, x: qx, y: qy, tx: qx, ty: qy, vx: 0, vy: 0, score: 0, combo: 0, maxCombo: 0, energy: 1, hits: 0, perfects: 0, seen: 0,
                      invuln: 0, shake: 0, sector: secAtT(tStart).name, level: 0, bmin: band[0], bmax: band[1], prevZ: zAt(tStart) });
   S.gatesInRun = course.filter(o => o.kind === 'gate' && o.t > tStart).length; S.score = carry;
-  S.cine = null; $('letterbox').classList.remove('on'); hud.classList.remove('cine');
+  S.cine = null; $('letterbox').classList.remove('on'); hud.classList.remove('cine'); S.tdK = tdAt(tStart); S.lastT = tStart;
   resetWorld(tStart); playTrack(tStart);
 }
 function endRun(complete) {
@@ -1697,10 +2128,12 @@ $('quitBtn').addEventListener('click', () => { togglePause(); endRun(false); });
 
 // ================= fly-bys between levels (cinematic, autopilot, no hits) =================
 const FLYBYS = [
-  { kind: 'side',   t0: OFF + 30.5 * BAR, t1: OFF + 32.6 * BAR },
-  { kind: 'side',   t0: OFF + 61.2 * BAR, t1: OFF + 63.4 * BAR },
-  { kind: 'funnel', t0: OFF + 78.2 * BAR, t1: T_TUN + 1.3 },
-  { kind: 'side',   t0: OFF + 96.3 * BAR, t1: OFF + 98.4 * BAR },
+  { kind: 'side',   t0: OFF + (L2 - 1.5) * BAR, t1: OFF + (L2 + .6) * BAR },
+  { kind: 'side',   t0: OFF + (L3 - 1.8) * BAR, t1: OFF + (L3 + .4) * BAR },
+  { kind: 'funnel', t0: OFF + (L4 - 1.8) * BAR, t1: T_TUN + 1.3 },
+  { kind: 'side',   t0: OFF + (L5 + .3) * BAR, t1: OFF + (L5 + 2.4) * BAR },
+  { kind: 'warp',   t0: OFF + (LEND - .25) * BAR, t1: OFF + (L6 + .25) * BAR },   // through the light into the top-down view (normal camera, autopilot)
+  { kind: 'dive',   t0: OFF + (L8 - 1) * BAR, t1: OFF + (L8 + .75) * BAR },     // the camera swings down from above into the chase view
 ];
 const cineAt = t => FLYBYS.find(f => t >= f.t0 && t < f.t1) || null;
 const smooth = x => x * x * (3 - 2 * x);
@@ -1713,7 +2146,7 @@ function crash(msg) {
   flashEl.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => flashEl.classList.remove('on')));
 }
 function grade(o) {
-  const d = Math.hypot(S.x - o.x, S.y - o.y); S.seen++;
+  const d = o.td ? Math.abs(S.x - o.x) : Math.hypot(S.x - o.x, S.y - o.y); S.seen++;   // flat rings (top-down): only the sideways miss counts
   let g = null;
   if (d <= .95) g = ['PERFECT', 300, '#ffc85a', .07]; else if (d <= 1.9) g = ['GREAT', 200, '#5ad8ff', .05]; else if (d <= 3.0) g = ['GOOD', 100, '#e9f1ff', .03];
   if (!g) { S.combo = 0; S.energy -= tierAt(secAtT(S.t).lv).miss; popup('popup', 'MISS', '#ff4656'); tintGate(o, 0x40404a, 1); SFX.miss(); return; }
@@ -1723,7 +2156,8 @@ function grade(o) {
   S.energy = Math.min(1, S.energy + g[3]);
   popup('popup', S.combo > 1 && S.combo % 10 === 0 ? `${g[0]} · x${S.combo}` : g[0], g[2]);
   SFX.collect(g[0], S.combo, clamp(S.x / 14, -.6, .6));
-  tintGate(o, g[0] === 'PERFECT' ? GOLD : 0xffffff, 3); o.flash = 0;
+  if (o.td) burstGate(o, g[0] === 'PERFECT' ? GOLD : g[0] === 'GREAT' ? 0x7fe8ff : 0xffffff, true);   // from above: the ring bursts into light
+  else { tintGate(o, g[0] === 'PERFECT' ? GOLD : 0xffffff, 3); o.flash = 0; }
 }
 
 const camTarget = new THREE.Vector3(), lookTarget = new THREE.Vector3(), lookCur = new THREE.Vector3(0, 8, -20);
@@ -1735,6 +2169,8 @@ function step(dt) {
   if (playing) S.t = songTime();
   else if (S.mode === 'menu' || S.mode === 'over') { S.t += dt; if (S.t > END_T - 2) { S.t = 0; resetWorld(0); } }
   const t = S.t, cz = zAt(t), v = vAt(t), sec = secAtT(t), inTunnel = cz < Z_TUN && cz > Z_TEND;
+  S.tdK = S.tdK == null ? tdAt(t) : lerp(S.tdK, tdAt(t), 1 - Math.exp(-dt * 2.4));   // 0 = chase view, 1 = seen from above
+  const td = S.tdK, xl = lerp(X_LIM, X_TD, td);
 
   while (spawnIdx < course.length && course[spawnIdx].z > cz - 340) spawn(course[spawnIdx++]);
   for (let i = live.length - 1; i >= 0; i--) { const o = live[i]; if (o.z - (o.R || 0) > cz + 40) { despawn(o); live.splice(i, 1); } }
@@ -1752,59 +2188,81 @@ function step(dt) {
       cine.side = side;
     }
   }
-  const autoFly = (!playing || window.__lr.auto || cine) && next, path = autoFly ? gatePath(cz) : null;
+  const autoFly = (!playing || window.__lr.auto || cine) && next, path = autoFly ? gatePath(cz - S.y * td) : null;
   if (autoFly && playing && window.__lr.auto) S.energy = 1;
   if (autoFly && !path) { S.tx = next.x; S.ty = next.y; }
   else if (playing && !autoFly) {
-    if (inputMode === 'mouse') { const cy = (S.bmin + S.bmax) / 2, hr = (S.bmax - S.bmin) / 2; S.tx = mouseN.x * X_LIM * 1.15; S.ty = cy - mouseN.y * hr * 1.25; }
+    if (inputMode === 'mouse') { const cy = (S.bmin + S.bmax) / 2, hr = (S.bmax - S.bmin) / 2; S.tx = mouseN.x * xl * 1.15; S.ty = cy - mouseN.y * hr * 1.25; }
     else if (inputMode === 'keys') {
       const ax = (keys.has('ArrowRight') || keys.has('KeyD')) - (keys.has('ArrowLeft') || keys.has('KeyA'));
       const ay = (keys.has('ArrowUp') || keys.has('KeyW')) - (keys.has('ArrowDown') || keys.has('KeyS'));
-      S.tx += ax * 20 * dt; S.ty += ay * 14 * dt;
+      S.tx += ax * 20 * (1 + td * 1.4) * dt; S.ty += ay * 14 * (1 + td * 1.5) * dt;   // arcade view: brisk, 8-way
     }
   }
   if (path) {   // glide along the ring line: no lurch when a ring is passed and the next one becomes the target
-    const f = 1 - Math.exp(-dt * 5), ox = S.x, oy = S.y;
+    const f = 1 - Math.exp(-dt * (5 + 20 * td)), ox = S.x, oy = S.y;
     S.tx = S.x = lerp(S.x, path[0], f); S.ty = S.y = lerp(S.y, path[1], f);
     S.vx = clamp((S.x - ox) / Math.max(dt, 1e-3), -26, 26); S.vy = clamp((S.y - oy) / Math.max(dt, 1e-3), -18, 18);
   } else {
-  S.tx = clamp(S.tx, -X_LIM, X_LIM); S.ty = clamp(S.ty, S.bmin, S.bmax);
+  S.tx = clamp(S.tx, -xl, xl); S.ty = clamp(S.ty, S.bmin, S.bmax);
   if (inTunnel) { const dx = S.tx, dy = S.ty - TCY, rr = Math.hypot(dx, dy); if (rr > TUN_LIM) { S.tx = dx / rr * TUN_LIM; S.ty = TCY + dy / rr * TUN_LIM; } }
-  const k = playing ? 7 : 4;
-  S.vx = clamp((S.tx - S.x) * k, -26, 26); S.vy = clamp((S.ty - S.y) * k, -18, 18);
+  const k = (playing ? 7 : 4) * (1 + td * 1.6);   // from above the craft snaps to the stick
+  S.vx = clamp((S.tx - S.x) * k, -26 - td * 30, 26 + td * 30); S.vy = clamp((S.ty - S.y) * k, -18 - td * 26, 18 + td * 26);
   S.x += S.vx * dt; S.y += S.vy * dt;
   }
   if (inTunnel) { const dx = S.x, dy = S.y - TCY, rr = Math.hypot(dx, dy); if (rr > TUN_LIM + .3) { S.x = dx / rr * (TUN_LIM + .3); S.y = TCY + dy / rr * (TUN_LIM + .3); } }
 
-  // collisions + rings
-  const hitOK = playing && S.invuln <= 0 && !cine, pz = S.prevZ ?? cz, crossed = o => pz > o.z && cz <= o.z;
+  // collisions + rings (top-down: the craft flies at ALT, S.y ahead of the scroll line)
+  const sy = lerp(S.y, ALT, td), sz = cz - S.y * td;
+  const hitOK = playing && S.invuln <= 0 && !cine, pz = S.prevZ ?? sz, crossed = o => pz > o.z && sz <= o.z;
   for (const o of live) {
-    if (o.done || o.kind === 'arc' || o.kind === 'slab') continue;
-    if (o.kind === 'gate') { if (cz <= o.z) { o.done = true; if (playing && !cine) grade(o); else if (cine) burstGate(o); else { tintGate(o, 0xffffff, 3); o.flash = 0; } } }
+    if (o.done || o.kind === 'arc' || o.kind === 'slab' || o.kind === 'core' || o.kind === 'hud') continue;
+    if (o.kind === 'gate') { if (sz <= o.z) { o.done = true; if (playing && !cine) grade(o); else if (cine) burstGate(o); else { tintGate(o, 0xffffff, 3); o.flash = 0; } } }
     else if (o.kind === 'pillar') {
       const hx = o.w / 2 + .95, hz = o.w / 2 + 1.6;
-      if (Math.abs(cz - o.z) < hz && Math.abs(S.x - o.x) < hx && S.y < o.h) { o.done = true; if (hitOK) crash('IMPACT'); }
-      else if (cz < o.z - hz) { o.done = true; const gap = Math.abs(S.x - o.x) - o.w / 2; if (hitOK && gap < 2.1) { const pts = Math.round(250 * (1 + S.combo * .05) * (S.boost ? 2 : 1)); S.score += pts; S.energy = Math.min(1, S.energy + .02); popup('popup2', `NEAR MISS +${pts}`, '#ffc85a'); SFX.near(clamp((o.x - S.x) / 6, -.8, .8)); } }
+      if (Math.abs(sz - o.z) < hz && Math.abs(S.x - o.x) < hx && sy < o.h) { o.done = true; if (hitOK) crash('IMPACT'); }
+      else if (sz < o.z - hz) { o.done = true; const gap = Math.abs(S.x - o.x) - o.w / 2; if (hitOK && gap < 2.1) { const pts = Math.round(250 * (1 + S.combo * .05) * (S.boost ? 2 : 1)); S.score += pts; S.energy = Math.min(1, S.energy + .02); popup('popup2', `NEAR MISS +${pts}`, '#ffc85a'); SFX.near(clamp((o.x - S.x) / 6, -.8, .8)); } }
     } else if (o.kind === 'laser') {
-      if (crossed(o)) { o.done = true; if (Math.abs(S.y - o.y) < .85 && hitOK) crash('LASER HIT'); }
+      if (crossed(o)) { o.done = true; if (Math.abs(sy - o.y) < .85 && hitOK) crash('LASER HIT'); }
     } else if (o.kind === 'sweep') {
-      const dx = S.x - o.x, dz = cz - o.z, rr = Math.hypot(dx, dz);
-      if (rr < o.R && Math.abs(S.y - o.h) < .9) {
-        const th = o.th0 + o.w * t; let d = ((Math.atan2(dz, dx) - th) % Math.PI + Math.PI) % Math.PI; d = Math.min(d, Math.PI - d);
+      const dx = S.x - o.x, dz = sz - o.z, rr = Math.hypot(dx, dz), P = Math.PI / (o.n || 1);
+      if (rr < o.R && Math.abs(sy - o.h) < .9) {
+        const th = o.th0 + o.w * t; let d = ((Math.atan2(dz, dx) - th) % P + P) % P; d = Math.min(d, P - d);
         if (d * rr < .95 && hitOK) crash('HUD LASER');
       }
-      if (cz < o.z - o.R) o.done = true;
+      if (sz < o.z - o.R) o.done = true;
+    } else if (o.kind === 'tdwall') {
+      if (crossed(o)) {
+        o.done = true;
+        const cx = o.qx + o.amp * Math.sin(Math.PI / BAR * (t - o.tc));
+        if (Math.abs(S.x - cx) > o.gw - .7) { if (hitOK) crash('LASER WALL'); }
+        else if (playing && !cine) { const pts = Math.round(150 * (1 + S.combo * .05) * (S.boost ? 2 : 1)); S.score += pts; popup('popup2', `THREADED +${pts}`, '#ffc85a'); SFX.near(0); }
+      }
+    } else if (o.kind === 'burst') {
+      if (o.deco) { if (t > o.tb + o.dur) o.done = true; continue; }
+      const ph = t - o.tb, dd = Math.hypot(S.x - o.x, sz - o.z);
+      if (ph >= 0 && ph < o.dur) {
+        if (dd < o.R + .7) { o.done = true; if (hitOK) crash('CORE BURST'); }
+        else if (dd < o.R + 3) o.near = true;
+      } else if (ph >= o.dur) {
+        o.done = true;
+        if (o.near && playing && !cine) { const pts = Math.round(220 * (1 + S.combo * .05) * (S.boost ? 2 : 1)); S.score += pts; S.energy = Math.min(1, S.energy + .02); popup('popup2', `SCORCHED +${pts}`, '#ffc85a'); SFX.near(clamp((o.x - S.x) / 6, -.8, .8)); }
+      }
+    } else if (o.kind === 'shard') {
+      const rr = shardHalfAt(o, sy), hz = rr + 1.6;
+      if (Math.abs(sz - o.z) < hz && Math.abs(S.x - o.x) < rr + .95 && sy < o.h) { o.done = true; if (hitOK) crash('GLASS SPIRE'); }
+      else if (sz < o.z - hz) { o.done = true; const gap = Math.abs(S.x - o.x) - rr; if (hitOK && gap < 2.1) { const pts = Math.round(250 * (1 + S.combo * .05) * (S.boost ? 2 : 1)); S.score += pts; S.energy = Math.min(1, S.energy + .02); popup('popup2', `NEAR MISS +${pts}`, '#ffc85a'); SFX.near(clamp((o.x - S.x) / 6, -.8, .8)); } }
     } else if (o.kind === 'spin') {
       if (crossed(o)) {
         o.done = true;
         const dx = S.x, dy = S.y - TCY, rr = Math.hypot(dx, dy), th = o.th0 + o.w * (t - o.tc), P = Math.PI / o.n;
         let d = ((Math.atan2(dy, dx) - th) % P + P) % P; d = Math.min(d, P - d);
-        if (rr > 2.6 && d * rr < .9 && hitOK) crash('BAR HIT');
+        if (rr > (o.hub || 3) - .4 && d * rr < .9 && hitOK) crash('BAR HIT');
       }
     } else if (o.kind === 'portal') {
       if (crossed(o)) {
         o.done = true;
-        const dx = S.x - o.hx, dy = S.y - o.hy, rr = Math.hypot(dx, dy);
+        const dx = S.x - o.hx, dy = sy - o.hy, rr = Math.hypot(dx, dy);
         if (rr > PH - .75 && rr < PR + .5) { if (hitOK) crash('HUD PORTAL'); }
         else if (o.bar && rr > 1.4) {
           const th = o.th0 + o.w * (t - o.tc); let d = ((Math.atan2(dy, dx) - th) % Math.PI + Math.PI) % Math.PI; d = Math.min(d, Math.PI - d);
@@ -1815,25 +2273,28 @@ function step(dt) {
       if (crossed(o)) {
         o.done = true;
         const off = o.amp * Math.sin(Math.PI / BAR * (t - o.tc)), cx = o.qx + (o.axis === 'x' ? off : 0), cy = o.qy + (o.axis === 'y' ? off * .6 : 0);
-        if (Math.abs(S.x - cx) > o.hw - .55 || Math.abs(S.y - cy) > o.hh - .55) { if (hitOK) crash('LASER WALL'); }
+        if (Math.abs(S.x - cx) > o.hw - .55 || Math.abs(sy - cy) > o.hh - .55) { if (hitOK) crash('LASER WALL'); }
         else if (playing && !cine) { const pts = Math.round(150 * (1 + S.combo * .05) * (S.boost ? 2 : 1)); S.score += pts; popup('popup2', `THREADED +${pts}`, '#ffc85a'); SFX.near(0); }
       }
     } else if (o.kind === 'grid') {
       if (crossed(o)) {
         o.done = true;
-        if (Math.hypot(S.x - o.hx, S.y - o.hy) > o.hr - .55) { if (hitOK) crash('LASER GRID'); }
+        if (Math.hypot(S.x - o.hx, sy - o.hy) > o.hr - .55) { if (hitOK) crash('LASER GRID'); }
         else if (playing && !cine) { const pts = Math.round(200 * (1 + S.combo * .05) * (S.boost ? 2 : 1)); S.score += pts; S.energy = Math.min(1, S.energy + .02); popup('popup2', `THREADED +${pts}`, '#ffc85a'); SFX.near(0); }
       }
     } else if (o.kind === 'fin') {
-      if (Math.abs(cz - o.z) < 1.8) {
-        const dx = S.x, dy = S.y - TCY;
+      if (Math.abs(sz - o.z) < 1.8) {
+        const dx = S.x, dy = sy - TCY;
         if (Math.hypot(dx, dy) > 4.7 && Math.abs(wrapPI(Math.atan2(dy, dx) - o.a)) < o.span / 2 + .08) { o.done = true; if (hitOK) crash('WALL FIN'); }
-      } else if (cz < o.z - 1.8) o.done = true;
+      } else if (sz < o.z - 1.8) o.done = true;
     }
   }
   // funnel wall: you must enter through the hole
-  if (playing && !cine && S.prevZ > Z_TUN && cz <= Z_TUN && Math.hypot(S.x, S.y - TCY) > TUN_R - .9 && S.invuln <= 0) crash('FUNNEL WALL');
-  S.prevZ = cz;
+  if (playing && !cine && S.prevZ > Z_TUN && sz <= Z_TUN && Math.hypot(S.x, sy - TCY) > TUN_R - .9 && S.invuln <= 0) crash('FUNNEL WALL');
+  S.prevZ = sz;
+  // into the sphere's light: a long white-out while the view lifts above the next world
+  if (playing && (S.lastT ?? t) < T_HOLE && t >= T_HOLE) { whiteEl.classList.add('on'); setTimeout(() => whiteEl.classList.remove('on'), 1100); SFX.level(); }
+  S.lastT = t;
 
   // animate gates / HUD towers / arms
   for (const o of live) {
@@ -1841,11 +2302,25 @@ function step(dt) {
       if (!o.done) tintGate(o, o === next ? GOLD : PAL[secAtT(o.t).pal].gate, o === next ? 2.6 : 1.8);
       if (o.burst >= 0) animBurst(o, dt);
       if (o.flash >= 0) { o.flash += dt; const f = o.flash / .4; o.mesh.scale.setScalar(1 + f * .7); o.mesh.userData.mats.forEach(m => m.opacity = Math.max(0, 1 - f)); }
-    } else if (o.kind === 'hud') { const u = o.mesh.userData; u.rings.rotation.y = t * .18 * o.spin; u.arcs.rotation.y = -t * .55 * o.spin; }
+    } else if (o.kind === 'hud') { const u = o.mesh.userData, k = o.td ? 4.5 : 1; u.rings.rotation.y = t * .18 * k * o.spin; u.arcs.rotation.y = -t * .55 * k * .8 * o.spin; }   // top-down discs spin like records
     else if (o.kind === 'sweep') o.mesh.userData.arm.rotation.y = -(o.th0 + o.w * t);
     else if (o.kind === 'spin') o.mesh.userData.arm.rotation.z = o.th0 + o.w * (t - o.tc);
     else if (o.kind === 'portal') { const u = o.mesh.userData; u.disc.userData.rings.forEach(m => m.rotation.z = t * .25); u.disc.userData.arcs.forEach(m => m.rotation.z = -t * .7); if (u.arm) u.arm.rotation.z = o.th0 + o.w * (t - o.tc); }
     else if (o.kind === 'arc') o.mesh.userData.turn.rotation.z = o.ph + t * o.spin;
+    else if (o.kind === 'tdwall' && o.amp) o.mesh.position.x = o.qx + o.amp * Math.sin(Math.PI / BAR * (t - o.tc));
+    else if (o.kind === 'burst') {
+      if (!o.fired && t >= o.tb) {   // it fires: a rising zap when it's near enough to matter
+        o.fired = true; const dz = Math.abs(cz - o.z);
+        if (playing && dz < 120) SFX.burst(clamp((o.x - S.x) / 26, -.9, .9), (1 - dz / 120) * (o.deco ? .75 : 1), Math.abs(Math.round(o.x * 3 + o.z)) % 8 + 2);
+      }
+      const u = o.mesh.userData, ph = t - o.tb, [w1, w2, bm, hm, cm] = u.mats;
+      const warn = ph >= -BAR && ph < 0 ? (ph + BAR) / BAR : 0, act = ph >= 0 && ph < o.dur ? Math.min(1, ph / .06) * (1 - smooth(clamp((ph - o.dur * .55) / (o.dur * .45), 0, 1))) : 0;
+      const beatF = ((ph / BEAT) % 1 + 1) % 1;
+      w1.opacity = warn * (.35 + .65 * Math.exp(-beatF * 5)) + act * .4; w2.opacity = warn * (1 - beatF) * .9;
+      u.r2.scale.setScalar(o.R * (1 + (1 - beatF) * 1.4));
+      const fl = 1 + .07 * Math.sin(t * 70); u.beam.scale.set(o.R * fl, u.BH, o.R * fl); u.halo.scale.set(o.R * 1.7 * fl, u.BH, o.R * 1.7 * fl);
+      bm.opacity = act * .5; hm.opacity = act * .12; cm.opacity = act; u.beam.visible = u.halo.visible = u.disc.visible = act > .001;
+    }
     else if (o.kind === 'win' && o.amp) { const off = o.amp * Math.sin(Math.PI / BAR * (t - o.tc)); o.mesh.position.x = o.qx + (o.axis === 'x' ? off : 0); o.mesh.position.y = o.qy + (o.axis === 'y' ? off * .6 : 0); }
   }
 
@@ -1857,14 +2332,16 @@ function step(dt) {
     else if (t >= END_T) endRun(true);
   }
   if (sec.lv !== S.level) {
-    if (playing) { levelCard(LEVELS[sec.lv - 1]); if (S.level) SFX.level(); if (sec.lv === 4) { whiteEl.classList.add('on'); setTimeout(() => whiteEl.classList.remove('on'), 200); } }
+    if (playing) { levelCard(LEVELS[sec.lv - 1]); if (S.level) SFX.level(); if (sec.lv === 4 || sec.lv === 8) { whiteEl.classList.add('on'); setTimeout(() => whiteEl.classList.remove('on'), 200); } }
     S.level = sec.lv; S.sector = sec.name;
   } else if (sec.name !== S.sector) { if (playing) popup('popup2', sec.name, '#5ad8ff'); S.sector = sec.name; }
 
   // craft
   const bob = Math.sin(t * 3.1) * .12;
-  craft.position.set(S.x, S.y + bob, cz);
-  craft.rotation.set(clamp(S.vy * .025, -.35, .35), 0, clamp(-S.vx * .035, -.6, .6));
+  craft.position.set(S.x, sy + bob * (1 - td), sz);
+  craft.scale.setScalar(1 + .5 * td); tdMark.scale.setScalar(1 + .5 * td);
+  tdMark.visible = td > .05 && craft.visible; tdMark.position.set(S.x, sy, sz); tdMark.userData.sh.material.opacity = td; tdMark.userData.bm.opacity = td * (.55 + .35 * (t > OFF ? Math.exp(-(((t - OFF) / BEAT) % 1) * 5) : 0));
+  craft.rotation.set(clamp(S.vy * .025 * (1 - td), -.35, .35), clamp(-S.vx * .007, -.22, .22) * td, clamp(-S.vx * .035, -.6, .6));   // from above it also noses into the turn
   craft.visible = !(S.invuln > 0 && Math.floor(S.invuln * 14) % 2 === 0 && playing);
   updateTrail(t, t > OFF ? Math.exp(-(((t - OFF) / BEAT) % 1) * 6) : 0);
 
@@ -1872,20 +2349,24 @@ function step(dt) {
   updateGround(cz); updateTunnel(cz);
   const ph = ((t - OFF) / BEAT) % 1, pulse = t > OFF ? Math.exp(-ph * 6) : 0;
   glowMat.color.setScalar((.75 + pulse * .5) * (1 + Math.min(S.combo, 40) / 40 * .6));
-  bloom.strength = .6 + pulse * .2 + (S.boost ? .2 : 0);
+  bloom.strength = (.6 + pulse * .2 + (S.boost ? .2 : 0)) * (1 - .3 * td);
   const p = PAL[sec.pal], blend = 1 - Math.exp(-dt * (inTunnel ? 2.5 : 1.2));
   bgCol.set(p.bg); fogCol.set(p.fog); skyCol.set(p.sky); gndCol.set(p.gnd);
   scene.background.lerp(bgCol, blend); scene.fog.color.lerp(fogCol, blend); hemi.color.lerp(skyCol, blend); hemi.groundColor.lerp(gndCol, blend);
   dens = lerp(dens, p.dens, blend); scene.fog.density = dens;
   beams.visible = !inTunnel && sec.lv < 5;
-  sphereRoot.visible = cz < Z_TEND + 400; rays.rotation.z = -t * .12;   // rays turn clockwise beams.position.set(0, 0, cz - 620);
-  domeCol.set(p.haloC).lerp(tmpC.set(TIER_GLOW[tierKey(sec.lv)]), .5); dome.material.uniforms.glow.value.lerp(domeCol, blend * .6); dome.visible = false; setHaze(dome.material.uniforms.glow.value, !inTunnel); skyFade(dt, sec.pal, inTunnel);
+  sphereRoot.visible = cz < Z_TEND + 400 && cz > Z_HOLE - 2; rays.rotation.z = -t * .12;   // rays turn clockwise beams.position.set(0, 0, cz - 620);
+  domeCol.set(p.haloC).lerp(tmpC.set(TIER_GLOW[tierKey(sec.lv)]), .5); dome.material.uniforms.glow.value.lerp(domeCol, blend * .6); dome.visible = false; setHaze(dome.material.uniforms.glow.value, !inTunnel && sec.pal !== 'prism'); skyFade(dt, sec.pal, inTunnel);
   coreLight.visible = cz < Z_TUN + 60 && cz > Z_TEND + 60; coreLight.position.set(0, TCY, cz - 250);
+  prismSky.visible = mirror.visible = cz < Z_L8 + 25;
+  sideSpires.visible = prismSky.visible; if (sideSpires.visible) updateSideSpires(cz); else sideAt = null;
+  coreMist.visible = cz < Z_L7 + 80 && cz > Z_L8 + 20;
+  if (coreMist.visible) coreMist.children.forEach(m => { const d = m.userData.drift; if (d) { m.material.map.offset.x += d[0] * dt; m.material.map.offset.y += d[1] * dt; } });
   const sl = 1.5 + v * .05 + (S.boost ? 7 : 0);
-  streakMat.opacity = S.boost ? .65 : .28;
+  streakMat.opacity = (S.boost ? .65 : .28) * (1 - td * .6);
   streakData.forEach((s, i) => {
     if (s.z > cz + 14) respawnStreak(s, cz, false);
-    dummy.position.set(S.x + Math.cos(s.a) * s.r, Math.max(.6, S.y + Math.sin(s.a) * s.r * .6), s.z); dummy.scale.set(1, 1, sl); dummy.rotation.set(0, 0, 0); dummy.updateMatrix(); streaks.setMatrixAt(i, dummy.matrix);
+    dummy.position.set(S.x + Math.cos(s.a) * s.r * (1 + td), Math.max(.6, sy + Math.sin(s.a) * s.r * .6 * (1 - td)), s.z); dummy.scale.set(1, 1, sl); dummy.rotation.set(0, 0, 0); dummy.updateMatrix(); streaks.setMatrixAt(i, dummy.matrix);
   });
   streaks.instanceMatrix.needsUpdate = true;
 
@@ -1894,21 +2375,25 @@ function step(dt) {
   if (inTunnel) { camTarget.set(S.x * .7, lerp(S.y, TCY, .3) + (angled ? 3.6 : 2.0), cz + (angled ? 9.5 : 8.2)); lookTarget.set(S.x * .6, S.y + .4, cz - 14); }
   else if (!angled) { camTarget.set(S.x * .82, S.y + 2.5, cz + 8.6); lookTarget.set(S.x * .9, S.y + .7, cz - 14); }
   else { camTarget.set(S.x * .75, S.y + 10.5, cz + 9.5); lookTarget.set(S.x * .85, S.y - .5, cz - 9); }
+  if (td > .001) {   // arcade view: high above the scroll line, tilted a little forward; the craft roams the lower two thirds of the screen
+    const ax = S.x * .35;
+    camTarget.lerp(tmpV.set(ax, ALT + 46, cz + 4), td); lookTarget.lerp(tmpV.set(ax, ALT, cz - 11), td);
+  }
   const cf = 1 - Math.exp(-dt * 6);
   S.camPos.x = lerp(S.camPos.x, camTarget.x, cf); S.camPos.y = lerp(S.camPos.y, camTarget.y, cf); S.camPos.z = camTarget.z;
   lookCur.lerp(lookTarget, cf); lookCur.z = lookTarget.z;
   camera.position.copy(S.camPos);
-  let fovT = 66 + v * .08 + (S.boost ? 10 : 0) + (inTunnel ? 6 : 0);
+  let fovT = lerp(66 + v * .08 + (S.boost ? 10 : 0) + (inTunnel ? 6 : 0), 55 + (S.boost ? 4 : 0), td);
   if (S.mode === 'menu') {             // hangar view: slow orbit, drag to rotate, ship sits right of the menu panel
     if (S.drag == null) S.orbit += dt * .25;
-    const a = S.orbit, rr = 9.5, cpos = new THREE.Vector3(S.x + Math.sin(a) * rr, S.y + 2.2, cz + Math.cos(a) * rr);
-    S.camPos.copy(cpos); camera.position.copy(cpos); lookCur.set(S.x, S.y + .2, cz);
+    const a = S.orbit, rr = 9.5, cpos = new THREE.Vector3(S.x + Math.sin(a) * rr, sy + 2.2, sz + Math.cos(a) * rr);
+    S.camPos.copy(cpos); camera.position.copy(cpos); lookCur.set(S.x, sy + .2, sz);
     camera.lookAt(lookCur); if (innerWidth >= 1000) camera.translateX(-3.2);
     dome.position.copy(camera.position); stars.position.copy(camera.position);
     S.fov = lerp(S.fov, 50, .1); camera.fov = S.fov; camera.updateProjectionMatrix();
     return;
   }
-  if (cine) {
+  if (cine && (cine.kind === 'side' || cine.kind === 'funnel')) {
     const u = (t - cine.t0) / (cine.t1 - cine.t0), craftP = new THREE.Vector3(S.x, S.y, cz);
     const split = cine.kind === 'side' ? .55 : clamp((T_TUN - cine.t0) / (cine.t1 - cine.t0), .3, .9);
     if (u < split) { camera.position.copy(cine.p1); camera.lookAt(craftP); fovT = cine.kind === 'side' ? 42 : 48; }
@@ -1926,7 +2411,7 @@ function step(dt) {
   if (S.shake > 0) { camera.position.x += (Math.random() - .5) * S.shake * .9; camera.position.y += (Math.random() - .5) * S.shake * .9; S.shake = Math.max(0, S.shake - dt * 2.2); }
   camera.lookAt(lookCur);
   dome.position.copy(camera.position); stars.position.copy(camera.position);
-  camera.rotateZ(clamp(-S.vx * .006, -.12, .12) + (inTunnel ? Math.sin(t * .4) * .05 : 0));
+  camera.rotateZ((clamp(-S.vx * .006, -.12, .12) + (inTunnel ? Math.sin(t * .4) * .05 : 0)) * (1 - td));
   S.fov = lerp(S.fov, fovT, 1 - Math.exp(-dt * 4));
   camera.fov = S.fov; camera.updateProjectionMatrix();
 
@@ -1937,6 +2422,7 @@ function step(dt) {
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false); composer.setSize(w, h); bloom.resolution.set(w / 2, h / 2);
+  const pr = renderer.getPixelRatio(); mirror.getRenderTarget().setSize(Math.round(w * pr * .6), Math.round(h * pr * .6));
   camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
@@ -1947,6 +2433,8 @@ let last = performance.now();
 renderer.setAnimationLoop(now => {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   if (S.mode !== 'paused') step(dt);
+  if (coreMist.visible) coreMist.position.set(camera.position.x, 0, camera.position.z);
+  if (prismSky.visible) { prismSky.position.set(camera.position.x, 0, camera.position.z); mirror.position.set(camera.position.x, 0, camera.position.z); }   // the plain + horizon travel with you
   composer.render();
 });
 loadTrack();
