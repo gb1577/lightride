@@ -1,4 +1,4 @@
-![LightRide](docs/cover.jpg)
+![LightRide](docs/lightride-wide-logo.jpg)
 
 # LightRide
 
