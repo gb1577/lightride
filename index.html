@@ -146,6 +146,17 @@ canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block
   #menu .tag { font-size: 14px; } #menu .keys { font-size: 13px; gap: 6px 12px; } #menu .rules { font-size: 12.5px; }
   #menu .lvl b { font-size: 12px; }
 }
+/* tiny boxes (the game embedded small in a web page on a phone): the full menu cannot be read at that size,
+   so show a title card (logo + start) and send the options to fullscreen */
+.miniHint { display: none; margin: 0; }
+@media (max-height: 260px), (max-width: 459px) and (min-aspect-ratio: 5/4) {
+  #menu .panel { grid-template-columns: 1fr; width: min(520px, 100%); gap: 8px; padding: 12px 18px 14px; }
+  #menu .info, #menu .choices { gap: 8px; }
+  #menu .tag, #menu .keys, #menu .rules, #menu .choices > .pick { display: none; }
+  #menu .logo { margin: -10px -14px -6px; }
+  #menu .miniHint { display: block; text-align: center; }
+  #menu .row { justify-content: center; }
+}
 #letterbox::before, #letterbox::after { content: ""; position: fixed; left: 0; right: 0; height: 0; background: #000; transition: height .5s ease; z-index: 5; pointer-events: none; }
 #letterbox::before { top: 0; } #letterbox::after { bottom: 0; }
 #letterbox.on::before, #letterbox.on::after { height: 10vh; }
@@ -227,6 +238,7 @@ h2.end { font: 900 clamp(26px, 5vw, 40px)/1 var(--display); letter-spacing: .08e
     </div>
     <div class="pick"><div class="lbl">DIFFICULTY</div><div class="levels" id="diffs"></div></div>
     <div class="pick"><div class="lbl">START AT</div><div class="levels" id="levels"></div></div>
+    <p class="hint miniHint">FULLSCREEN FOR VESSEL, DIFFICULTY &amp; LEVEL SELECT</p>
     <div class="row">
       <button class="btn" id="startBtn" type="button" disabled>LOADING TRACK</button>
       <div class="meta">128 BPM · 3 TRACKS<br>BEST <span id="bestMenu">0</span></div>
