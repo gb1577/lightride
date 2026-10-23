@@ -404,7 +404,7 @@ let D = DIFFS[store.get('lr_diff', 'medium')] || DIFFS.medium;
 const PLAN = { easy: ['easy', 'medium', 'medium', 'hard', 'hard'], medium: ['medium', 'medium', 'hard', 'hard', 'hard'], hard: ['hard', 'hard', 'hard', 'hard', 'hard'] };
 const TIER_GLOW = { easy: 0x0f3a4c, medium: 0x40300e, hard: 0x46101e };   // horizon tint per tier
 let runStartLv = store.get('lr_lv', 1), runLoop = 1;   // the ladder counts from the level you start on; each loop climbs two steps
-const tierKey = lv => { const k = PLAN[D.key][Math.max(0, Math.min(4, lv - runStartLv + (runLoop - 1) * 2))];
+const tierKey = (lv, start = runStartLv, loop = runLoop) => { const k = PLAN[D.key][Math.max(0, Math.min(4, lv - start + (loop - 1) * 2))];
   return D.key === 'easy' && TD_LV.has(lv) && k === 'hard' ? 'medium' : k; };   // Light Rider: the top-down levels top out at Pro
 const tierAt = lv => DIFFS[tierKey(lv)];
 
@@ -2054,6 +2054,10 @@ function endRun(complete) {
   const sec = secAtT(S.t); S.retryLv = complete ? 0 : sec.lv;
   $('overTitle').textContent = (complete ? (runLoop > 1 ? `LOOP ${runLoop} COMPLETE` : 'RUN COMPLETE') : 'SIGNAL LOST') + ' · ' + D.name;
   $('nextLoopBtn').hidden = $('loopNote').hidden = !complete;
+  if (complete) {                       // only promise HARDER while the next loop really climbs the ladder (it tops out at Hard)
+    const rank = { easy: 0, medium: 1, hard: 2 }, harder = LEVELS.some(L => rank[tierKey(L.lv, 1, runLoop + 1)] > rank[tierKey(L.lv)]);
+    $('loopNote').textContent = `NEXT LOOP: ${harder ? 'HARDER, ' : ''}NEW COLOURS, YOUR SCORE CARRIES OVER`;
+  }
   $('newBest').hidden = !isBest;
   $('rScore').textContent = Math.round(S.score).toLocaleString('en-US');
   $('rBest').textContent = best.toLocaleString('en-US');
